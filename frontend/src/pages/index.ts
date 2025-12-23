@@ -1,5 +1,6 @@
 export { LoginPage } from './LoginPage';
 export { RegisterPage } from './RegisterPage';
+export { AuthCallbackPage } from './AuthCallbackPage';
 export { DashboardPage } from './DashboardPage';
 export { ChatPage } from './ChatPage';
 export { TeamsPage } from './TeamsPage';

@@ -21,6 +21,8 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
+  loginWithGithub: () => Promise<void>;
   logout: () => void;
   updateProfile: (updates: Partial<User>) => Promise<void>;
 }
@@ -110,6 +112,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   // ══════════════════════════════════════════════════════════════════════════
+  // OAuth Login - Google
+  // ══════════════════════════════════════════════════════════════════════════
+
+  const loginWithGoogle = useCallback(async () => {
+    // Redirect to backend OAuth endpoint
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+    window.location.href = `${apiUrl}/auth/google`;
+  }, []);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // OAuth Login - GitHub
+  // ══════════════════════════════════════════════════════════════════════════
+
+  const loginWithGithub = useCallback(async () => {
+    // Redirect to backend OAuth endpoint
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+    window.location.href = `${apiUrl}/auth/github`;
+  }, []);
+
+  // ══════════════════════════════════════════════════════════════════════════
   // Logout
   // ══════════════════════════════════════════════════════════════════════════
 
@@ -147,6 +169,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isLoading,
     login,
     register,
+    loginWithGoogle,
+    loginWithGithub,
     logout,
     updateProfile,
   };
