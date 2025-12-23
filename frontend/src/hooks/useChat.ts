@@ -23,7 +23,7 @@ export function useChat({ chatId }: UseChatOptions = {}) {
     queryKey: ['chat', chatId],
     queryFn: async () => {
       const response = await api.get(`/chats/${chatId}`);
-      return response.data as Chat;
+      return response.data.chat as Chat;
     },
     enabled: !!chatId,
   });
@@ -44,7 +44,8 @@ export function useChat({ chatId }: UseChatOptions = {}) {
   const sendMessageMutation = useMutation({
     mutationFn: async ({ chatId, content }: { chatId: string; content: string }) => {
       const response = await api.post(`/chats/${chatId}/messages`, { content });
-      return response.data as Message;
+      // Backend returns { userMessage, assistantMessage }
+      return response.data.assistantMessage as Message;
     },
     onMutate: async ({ chatId, content }) => {
       // Cancel outgoing refetches
@@ -87,7 +88,7 @@ export function useChat({ chatId }: UseChatOptions = {}) {
   const createChatMutation = useMutation({
     mutationFn: async (params: { title?: string; mode?: string }) => {
       const response = await api.post('/chats', params);
-      return response.data as Chat;
+      return response.data.chat as Chat;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['chats'] });

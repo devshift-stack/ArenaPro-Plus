@@ -11,6 +11,7 @@ interface WebSocketContextType {
   sendTyping: (chatId: string) => void;
   onMessage: (handler: (message: any) => void) => () => void;
   onProgress: (handler: (progress: any) => void) => () => void;
+  subscribe: (event: string, handler: (data: any) => void) => () => void;
 }
 
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
@@ -35,7 +36,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
     const newSocket = io(WS_URL, {
       transports: ['websocket'],
       auth: {
-        token: localStorage.getItem('accessToken'),
+        token: localStorage.getItem('token'),
       },
     });
 
@@ -92,10 +93,20 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
 
   const onProgress = useCallback((handler: (progress: any) => void) => {
     if (!socket) return () => {};
-    
+
     socket.on('arena_progress', handler);
     return () => {
       socket.off('arena_progress', handler);
+    };
+  }, [socket]);
+
+  // Generic subscribe function for any event
+  const subscribe = useCallback((event: string, handler: (data: any) => void) => {
+    if (!socket) return () => {};
+
+    socket.on(event, handler);
+    return () => {
+      socket.off(event, handler);
     };
   }, [socket]);
 
@@ -109,6 +120,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
         sendTyping,
         onMessage,
         onProgress,
+        subscribe,
       }}
     >
       {children}

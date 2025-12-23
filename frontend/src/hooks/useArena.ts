@@ -48,10 +48,10 @@ export function useArena() {
     mutationFn: async (params: CreateChatParams) => {
       const response = await api.post('/chats', {
         title: params.title || 'Neuer Chat',
-        mode: params.mode || 'auto-select',
+        mode: params.mode || 'AUTO_SELECT',
         modelIds: params.modelIds,
       });
-      return response.data as Chat;
+      return response.data.chat as Chat;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['chats'] });
@@ -108,7 +108,7 @@ export function useArena() {
   // Arena mode configurations
   const arenaModes = [
     {
-      id: 'auto-select' as ArenaMode,
+      id: 'AUTO_SELECT' as ArenaMode,
       name: 'Auto-Select',
       description: 'Arena wählt automatisch das beste Modell für deine Anfrage',
       icon: 'Sparkles',
@@ -116,7 +116,7 @@ export function useArena() {
       color: 'amber',
     },
     {
-      id: 'collaborative' as ArenaMode,
+      id: 'COLLABORATIVE' as ArenaMode,
       name: 'Collaborative',
       description: 'Mehrere Modelle arbeiten zusammen an deiner Anfrage',
       icon: 'Users',
@@ -124,7 +124,7 @@ export function useArena() {
       color: 'blue',
     },
     {
-      id: 'divide-conquer' as ArenaMode,
+      id: 'DIVIDE_CONQUER' as ArenaMode,
       name: 'Divide & Conquer',
       description: 'Aufgabe wird aufgeteilt und an Spezialisten verteilt',
       icon: 'GitBranch',
@@ -132,7 +132,7 @@ export function useArena() {
       color: 'purple',
     },
     {
-      id: 'project' as ArenaMode,
+      id: 'PROJECT' as ArenaMode,
       name: 'Project Mode',
       description: 'Für komplexe Projekte mit mehreren Phasen',
       icon: 'FolderKanban',
@@ -140,7 +140,7 @@ export function useArena() {
       color: 'green',
     },
     {
-      id: 'tester' as ArenaMode,
+      id: 'TESTER' as ArenaMode,
       name: 'Tester Mode',
       description: 'Automatisierte Tests und Verifikation der Ergebnisse',
       icon: 'TestTube2',

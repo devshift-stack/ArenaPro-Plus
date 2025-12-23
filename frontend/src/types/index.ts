@@ -64,12 +64,12 @@ export interface ChatMetadata {
 // ARENA
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export type ArenaMode = 
-  | 'auto-select'
-  | 'collaborative'
-  | 'divide-conquer'
-  | 'project'
-  | 'tester';
+export type ArenaMode =
+  | 'AUTO_SELECT'
+  | 'COLLABORATIVE'
+  | 'DIVIDE_CONQUER'
+  | 'PROJECT'
+  | 'TESTER';
 
 export interface ArenaModeConfig {
   id: ArenaMode;
