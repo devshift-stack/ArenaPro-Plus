@@ -12,8 +12,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-arena_secure_password}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    # No external port - only accessible within Docker network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U arena_user -d ai_arena"]
       interval: 10s
@@ -29,10 +28,9 @@ services:
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_secure_password}
     volumes:
       - redis_data:/data
-    ports:
-      - "6379:6379"
+    # No external port - only accessible within Docker network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_secure_password}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -49,9 +47,7 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minio_secret_key}
     volumes:
       - minio_data:/data
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+    # No external port - only accessible within Docker network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
@@ -79,14 +75,14 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio_access_key}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio_secret_key}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-your_encryption_key_min_32_chars}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
-      API_URL: ${API_URL:-http://localhost:3001/api}
+      FRONTEND_URL: ${FRONTEND_URL:-https://arena.activi.io}
+      API_URL: ${API_URL:-https://arena.activi.io/api}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3003:3001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -104,11 +100,11 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${API_URL:-http://localhost:3001/api}
-        VITE_WS_URL: ${WS_URL:-ws://localhost:3001}
+        VITE_API_URL: ${API_URL:-https://arena.activi.io/api}
+        VITE_WS_URL: ${WS_URL:-wss://arena.activi.io}
     container_name: ai-arena-frontend
     ports:
-      - "3000:80"
+      - "127.0.0.1:3002:80"
     depends_on:
       - backend
     networks:
