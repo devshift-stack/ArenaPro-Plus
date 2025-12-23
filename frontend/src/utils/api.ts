@@ -1,145 +1,240 @@
-// AI Arena - API Utility
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 
-class ApiClient {
-  private baseUrl: string;
+// API Base URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
-  constructor(baseUrl: string) {
-    this.baseUrl = baseUrl;
-  }
+// Axios Instance erstellen
+const api: AxiosInstance = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
 
-  private async request<T>(
-    endpoint: string,
-    options: RequestInit = {}
-  ): Promise<{ data: T; status: number }> {
-    const token = localStorage.getItem('accessToken');
-
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    };
-
-    const response = await fetch(`${this.baseUrl}${endpoint}`, {
-      ...options,
-      headers,
-    });
-
-    // Handle token refresh
-    if (response.status === 401) {
-      const refreshed = await this.refreshToken();
-      if (refreshed) {
-        // Retry request with new token
-        const newToken = localStorage.getItem('accessToken');
-        const retryResponse = await fetch(`${this.baseUrl}${endpoint}`, {
-          ...options,
-          headers: {
-            ...headers,
-            Authorization: `Bearer ${newToken}`,
-          },
-        });
-        const data = await retryResponse.json();
-        return { data, status: retryResponse.status };
-      }
+// Request Interceptor - JWT Token hinzufügen
+api.interceptors.request.use(
+  (config: InternalAxiosRequestConfig) => {
+    const token = localStorage.getItem('token');
+    if (token && config.headers) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'Request failed' }));
-      throw new Error(error.error || error.message || 'Request failed');
-    }
-
-    const data = await response.json();
-    return { data, status: response.status };
+    return config;
+  },
+  (error: AxiosError) => {
+    return Promise.reject(error);
   }
+);
 
-  private async refreshToken(): Promise<boolean> {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (!refreshToken) return false;
+// Response Interceptor - Error Handling
+api.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
-    try {
-      const response = await fetch(`${this.baseUrl}/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      });
+    // Token abgelaufen - Refresh versuchen
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
 
-      if (!response.ok) {
-        localStorage.removeItem('accessToken');
+      try {
+        const refreshToken = localStorage.getItem('refreshToken');
+        if (refreshToken) {
+          const response = await axios.post(`${API_BASE_URL}/auth/refresh`, {
+            refreshToken,
+          });
+
+          const { token } = response.data;
+          localStorage.setItem('token', token);
+
+          if (originalRequest.headers) {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+          }
+
+          return api(originalRequest);
+        }
+      } catch (refreshError) {
+        // Refresh fehlgeschlagen - Logout
+        localStorage.removeItem('token');
         localStorage.removeItem('refreshToken');
         window.location.href = '/login';
-        return false;
+        return Promise.reject(refreshError);
       }
-
-      const data = await response.json();
-      localStorage.setItem('accessToken', data.accessToken);
-      localStorage.setItem('refreshToken', data.refreshToken);
-      return true;
-    } catch {
-      return false;
     }
+
+    return Promise.reject(error);
   }
+);
 
-  async get<T>(endpoint: string): Promise<{ data: T; status: number }> {
-    return this.request<T>(endpoint, { method: 'GET' });
-  }
+// API Helper Functions
+export const apiHelpers = {
+  // GET Request
+  get: <T>(url: string, params?: object) => 
+    api.get<T>(url, { params }).then(res => res.data),
 
-  async post<T>(endpoint: string, body?: any): Promise<{ data: T; status: number }> {
-    return this.request<T>(endpoint, {
-      method: 'POST',
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  }
+  // POST Request
+  post: <T>(url: string, data?: object) => 
+    api.post<T>(url, data).then(res => res.data),
 
-  async put<T>(endpoint: string, body?: any): Promise<{ data: T; status: number }> {
-    return this.request<T>(endpoint, {
-      method: 'PUT',
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  }
+  // PUT Request
+  put: <T>(url: string, data?: object) => 
+    api.put<T>(url, data).then(res => res.data),
 
-  async patch<T>(endpoint: string, body?: any): Promise<{ data: T; status: number }> {
-    return this.request<T>(endpoint, {
-      method: 'PATCH',
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  }
+  // PATCH Request
+  patch: <T>(url: string, data?: object) => 
+    api.patch<T>(url, data).then(res => res.data),
 
-  async delete<T>(endpoint: string): Promise<{ data: T; status: number }> {
-    return this.request<T>(endpoint, { method: 'DELETE' });
-  }
+  // DELETE Request
+  delete: <T>(url: string) => 
+    api.delete<T>(url).then(res => res.data),
+};
 
-  // File upload
-  async upload<T>(endpoint: string, file: File, onProgress?: (percent: number) => void): Promise<{ data: T }> {
-    const token = localStorage.getItem('accessToken');
-    
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      const formData = new FormData();
-      formData.append('file', file);
+// Auth API
+export const authApi = {
+  login: (email: string, password: string) =>
+    apiHelpers.post<{ token: string; refreshToken: string; user: object }>('/auth/login', { email, password }),
 
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable && onProgress) {
-          onProgress((e.loaded / e.total) * 100);
-        }
-      });
+  register: (email: string, password: string, name: string) =>
+    apiHelpers.post<{ token: string; refreshToken: string; user: object }>('/auth/register', { email, password, name }),
 
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve({ data: JSON.parse(xhr.responseText) });
-        } else {
-          reject(new Error('Upload failed'));
-        }
-      });
+  logout: () => apiHelpers.post('/auth/logout'),
 
-      xhr.addEventListener('error', () => reject(new Error('Upload failed')));
+  me: () => apiHelpers.get<{ user: object }>('/auth/me'),
 
-      xhr.open('POST', `${this.baseUrl}${endpoint}`);
-      if (token) {
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-      }
-      xhr.send(formData);
-    });
-  }
-}
+  refreshToken: (refreshToken: string) =>
+    apiHelpers.post<{ token: string }>('/auth/refresh', { refreshToken }),
+};
 
-export const api = new ApiClient(API_URL);
+// Chat API
+export const chatApi = {
+  getChats: () => apiHelpers.get<{ chats: object[] }>('/chats'),
+
+  getChat: (chatId: string) => apiHelpers.get<{ chat: object }>(`/chats/${chatId}`),
+
+  createChat: (params: { title?: string; mode?: string; modelIds?: string[] }) =>
+    apiHelpers.post<{ chat: object }>('/chats', params),
+
+  deleteChat: (chatId: string) => apiHelpers.delete(`/chats/${chatId}`),
+
+  sendMessage: (chatId: string, content: string) =>
+    apiHelpers.post<{ message: object }>(`/chats/${chatId}/messages`, { content }),
+
+  getMessages: (chatId: string) =>
+    apiHelpers.get<{ messages: object[] }>(`/chats/${chatId}/messages`),
+};
+
+// Arena API
+export const arenaApi = {
+  getModels: () => apiHelpers.get<{ models: object[] }>('/arena/models'),
+
+  getModes: () => apiHelpers.get<{ modes: object[] }>('/arena/modes'),
+
+  changeMode: (chatId: string, mode: string) =>
+    apiHelpers.post(`/arena/chats/${chatId}/mode`, { mode }),
+
+  selectModels: (chatId: string, modelIds: string[]) =>
+    apiHelpers.post(`/arena/chats/${chatId}/models`, { modelIds }),
+
+  analyzeTask: (content: string) =>
+    apiHelpers.post<{ analysis: object }>('/arena/analyze', { content }),
+};
+
+// Memory API
+export const memoryApi = {
+  getMemories: (params?: { type?: string; limit?: number }) =>
+    apiHelpers.get<{ memories: object[] }>('/memory', params),
+
+  recall: (query: string, limit?: number) =>
+    apiHelpers.post<{ memories: object[] }>('/memory/recall', { query, limit }),
+
+  getContext: (chatId: string) =>
+    apiHelpers.get<{ context: object }>(`/memory/context/${chatId}`),
+
+  getSettings: () => apiHelpers.get<{ settings: object }>('/memory/settings'),
+
+  updateSettings: (settings: object) =>
+    apiHelpers.put<{ settings: object }>('/memory/settings', settings),
+
+  deleteAll: () => apiHelpers.delete('/memory/all'),
+
+  export: () => apiHelpers.post<{ data: object }>('/memory/export'),
+};
+
+// Knowledge Base API
+export const knowledgeApi = {
+  getEntries: (params?: { status?: string; tags?: string[] }) =>
+    apiHelpers.get<{ entries: object[] }>('/knowledge', params),
+
+  createEntry: (data: { content: string; tags?: string[] }) =>
+    apiHelpers.post<{ entry: object }>('/knowledge', data),
+
+  verifyEntry: (entryId: string) =>
+    apiHelpers.post(`/knowledge/${entryId}/verify`),
+
+  search: (query: string) =>
+    apiHelpers.post<{ results: object[] }>('/knowledge/search', { query }),
+};
+
+// Learning API
+export const learningApi = {
+  getProposedRules: () =>
+    apiHelpers.get<{ rules: object[] }>('/learning/rules/proposed'),
+
+  getActiveRules: () =>
+    apiHelpers.get<{ rules: object[] }>('/learning/rules/active'),
+
+  approveRule: (ruleId: string) =>
+    apiHelpers.post(`/learning/rules/${ruleId}/approve`),
+
+  rejectRule: (ruleId: string, reason: string) =>
+    apiHelpers.post(`/learning/rules/${ruleId}/reject`, { reason }),
+
+  deleteRule: (ruleId: string) =>
+    apiHelpers.delete(`/learning/rules/${ruleId}`),
+
+  getStatistics: () =>
+    apiHelpers.get<{ statistics: object }>('/learning/statistics'),
+
+  recordEvent: (data: { type: string; modelId: string; chatId: string; content: string }) =>
+    apiHelpers.post('/learning/events', data),
+
+  recordCorrection: (data: { messageId: string; originalContent: string; correctedContent: string }) =>
+    apiHelpers.post('/learning/corrections', data),
+
+  recordFeedback: (data: { messageId: string; isPositive: boolean; reason?: string }) =>
+    apiHelpers.post('/learning/feedback', data),
+};
+
+// Teams API
+export const teamsApi = {
+  getTeams: () => apiHelpers.get<{ teams: object[] }>('/teams'),
+
+  createTeam: (data: { name: string; description?: string }) =>
+    apiHelpers.post<{ team: object }>('/teams', data),
+
+  inviteMember: (teamId: string, email: string, role?: string) =>
+    apiHelpers.post(`/teams/${teamId}/invite`, { email, role }),
+
+  removeMember: (teamId: string, userId: string) =>
+    apiHelpers.delete(`/teams/${teamId}/members/${userId}`),
+
+  updateSettings: (teamId: string, settings: object) =>
+    apiHelpers.put(`/teams/${teamId}/settings`, settings),
+};
+
+// Prompts API
+export const promptsApi = {
+  getPrompts: (params?: { category?: string; favorites?: boolean }) =>
+    apiHelpers.get<{ prompts: object[] }>('/prompts', params),
+
+  createPrompt: (data: { title: string; content: string; category?: string }) =>
+    apiHelpers.post<{ prompt: object }>('/prompts', data),
+
+  toggleFavorite: (promptId: string) =>
+    apiHelpers.post(`/prompts/${promptId}/favorite`),
+
+  suggest: (description: string) =>
+    apiHelpers.post<{ suggestion: string }>('/prompts/suggest', { description }),
+};
+
+// Default Export
+export default api;

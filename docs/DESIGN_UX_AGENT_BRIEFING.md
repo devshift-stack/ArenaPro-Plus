@@ -1,7 +1,7 @@
 # 🎨 AI ARENA - DESIGN & UX AGENT BRIEFING
 
-> **Version:** 2.0 | **Stand:** Dezember 2024
-> **Status:** Frontend-Grundstruktur vorhanden, UI-Komponenten erstellt, Pages implementiert
+**Version:** 2.1 | **Stand:** Dezember 2024
+**Status:** Frontend-Grundstruktur vorhanden, UI-Komponenten erstellt, Pages implementiert
 
 ---
 
@@ -15,26 +15,26 @@
 6. [Existierende Pages](#6-existierende-pages)
 7. [Existierende Hooks & Contexts](#7-existierende-hooks--contexts)
 8. [Import-Konventionen](#8-import-konventionen)
-9. [Noch zu implementieren](#9-noch-zu-implementieren)
-10. [Qualitäts-Checkliste](#10-qualitäts-checkliste)
+9. [API-Integration](#9-api-integration)
+10. [Noch zu implementieren](#10-noch-zu-implementieren)
+11. [Qualitäts-Checkliste](#11-qualitäts-checkliste)
 
 ---
 
 ## 1. PROJEKTÜBERSICHT
 
 ### Was ist AI Arena?
-
 AI Arena ist eine Multi-Modell-Orchestrierungsplattform, die verschiedene KI-Modelle intelligent kombiniert.
 
 ### Die 5 Arena-Modi
 
 | Modus | Icon | Farbe | Beschreibung |
 |-------|------|-------|--------------|
-| **Auto-Select** | Sparkles | `amber → orange` | Automatische Modellauswahl |
-| **Collaborative** | Users | `blue → cyan` | Modelle arbeiten zusammen |
-| **Divide & Conquer** | GitBranch | `purple → pink` | Aufgaben werden verteilt |
-| **Project** | FolderKanban | `green → emerald` | Projektplanung & Phasen |
-| **Tester** | TestTube2 | `red → rose` | Automatisierte Tests |
+| **Auto-Select** | Sparkles | amber → orange | Automatische Modellauswahl |
+| **Collaborative** | Users | blue → cyan | Modelle arbeiten zusammen |
+| **Divide & Conquer** | GitBranch | purple → pink | Aufgaben werden verteilt |
+| **Project** | FolderKanban | green → emerald | Projektplanung & Phasen |
+| **Tester** | TestTube2 | red → rose | Automatisierte Tests |
 
 ### Design-Philosophie
 
@@ -59,8 +59,9 @@ Frontend:
 ├── Framer Motion (Animationen)
 ├── Lucide React (Icons)
 ├── React Router 6
-├── TanStack Query (Server State)
-└── Zustand (Client State)
+├── Axios (HTTP Client)
+├── TanStack Query (Server State) - optional
+└── Zustand (Client State) - optional
 ```
 
 ---
@@ -126,7 +127,7 @@ frontend/src/
 │   └── index.ts               # Alle TypeScript Types
 │
 ├── utils/                     # ✅ VORHANDEN
-│   └── api.ts                 # Axios Instance
+│   └── api.ts                 # Axios Instance + API Functions
 │
 ├── App.tsx                    # ✅ VORHANDEN
 ├── main.tsx                   # ✅ VORHANDEN
@@ -328,24 +329,23 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 
 | Komponente | Import | Beschreibung |
 |------------|--------|--------------|
-| `Avatar` | `@/components/ui/avatar` | Avatar mit Fallback, sizes: sm, md, lg, xl |
-| `Select` | `@/components/ui/select` | Dropdown-Auswahl |
-| `Tabs` | `@/components/ui/tabs` | Tab-Navigation |
-| `DropdownMenu` | `@/components/ui/dropdown-menu` | Kontextmenü |
-| `Tooltip` | `@/components/ui/tooltip` | Hover-Tooltips |
-| `Progress` | `@/components/ui/progress` | Fortschrittsbalken |
-| `ScrollArea` | `@/components/ui/scroll-area` | Custom Scrollbar |
-| `Separator` | `@/components/ui/separator` | Trennlinie |
-| `Popover` | `@/components/ui/popover` | Popover-Container |
-| `Label` | `@/components/ui/label` | Form Labels |
-| `Toaster` | `@/components/ui/toaster` | Toast-Notifications |
+| Avatar | `@/components/ui/avatar` | Avatar mit Fallback, sizes: sm, md, lg, xl |
+| Select | `@/components/ui/select` | Dropdown-Auswahl |
+| Tabs | `@/components/ui/tabs` | Tab-Navigation |
+| DropdownMenu | `@/components/ui/dropdown-menu` | Kontextmenü |
+| Tooltip | `@/components/ui/tooltip` | Hover-Tooltips |
+| Progress | `@/components/ui/progress` | Fortschrittsbalken |
+| ScrollArea | `@/components/ui/scroll-area` | Custom Scrollbar |
+| Separator | `@/components/ui/separator` | Trennlinie |
+| Popover | `@/components/ui/popover` | Popover-Container |
+| Label | `@/components/ui/label` | Form Labels |
+| Toaster | `@/components/ui/toaster` | Toast-Notifications |
 
 ---
 
 ## 6. EXISTIERENDE PAGES
 
 ### 6.1 LoginPage
-
 **Pfad:** `/login`
 **Features:**
 - E-Mail/Passwort Login
@@ -356,7 +356,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 - Hintergrund-Glow-Effekt
 
 ### 6.2 RegisterPage
-
 **Pfad:** `/register`
 **Features:**
 - Name, E-Mail, Passwort, Passwort bestätigen
@@ -365,7 +364,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 - Link zu Login
 
 ### 6.3 DashboardPage
-
 **Pfad:** `/dashboard`
 **Features:**
 - Begrüßung mit Username
@@ -376,7 +374,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 - Memory Status Card
 
 ### 6.4 ChatPage
-
 **Pfad:** `/chat` und `/chat/:chatId`
 **Features:**
 - Arena-Modus-Auswahl (Select Dropdown)
@@ -389,7 +386,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 - Typing Indicator
 
 ### 6.5 TeamsPage
-
 **Pfad:** `/teams`
 **Features:**
 - Team-Karten mit Mitgliedern
@@ -399,7 +395,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 - Team-Einstellungen Dropdown
 
 ### 6.6 KnowledgeBasePage
-
 **Pfad:** `/knowledge`
 **Features:**
 - Such- und Filter-Funktionen
@@ -409,7 +404,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 - Inline Tag-Toggle
 
 ### 6.7 PromptsPage
-
 **Pfad:** `/prompts`
 **Features:**
 - Prompt-Bibliothek mit Kategorien
@@ -419,7 +413,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 - Usage-Counter
 
 ### 6.8 SettingsPage
-
 **Pfad:** `/settings`
 **Features:**
 - Profil-Tab (Avatar, Name, E-Mail)
@@ -429,7 +422,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 - Abrechnung-Tab (Plan, Usage-Balken)
 
 ### 6.9 HandbookPage
-
 **Pfad:** `/handbook`
 **Features:**
 - Suchfunktion
@@ -439,7 +431,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 - Hilfe-Kontakt-Card
 
 ### 6.10 LearningRulesPage (NEU!)
-
 **Pfad:** `/learning` (Admin-Bereich)
 **Features:**
 - Statistik-Karten (Ausstehend, Aktiv, Abgelehnt, Events)
@@ -557,7 +548,7 @@ const unsubscribe = subscribe('message:new', (data) => {
 
 ### ⚠️ WICHTIG: Unterschiedliche Import-Pfade je nach Ordner!
 
-### In `/pages/` - Verwende `@/` Alias:
+#### In `/pages/` - Verwende `@/` Alias:
 
 ```tsx
 // ✅ RICHTIG
@@ -568,7 +559,7 @@ import { cn } from '@/lib/utils';
 import api from '@/utils/api';
 ```
 
-### In `/components/layouts/` - Verwende relative Pfade:
+#### In `/components/layouts/` - Verwende relative Pfade:
 
 ```tsx
 // ✅ RICHTIG
@@ -576,14 +567,14 @@ import { Button } from '../ui/button';
 import { useAuth } from '../../contexts/AuthContext';
 ```
 
-### In `/components/ui/` - Verwende `@/lib/utils`:
+#### In `/components/ui/` - Verwende `@/lib/utils`:
 
 ```tsx
 // ✅ RICHTIG
 import { cn } from '@/lib/utils';
 ```
 
-### Allgemeine Regeln:
+#### Allgemeine Regeln:
 
 ```tsx
 // Icons - Immer von lucide-react
@@ -598,9 +589,116 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 
 ---
 
-## 9. NOCH ZU IMPLEMENTIEREN
+## 9. API-INTEGRATION
 
-### 9.1 Chat-Komponenten (Priorität: HOCH)
+### ⚠️ WICHTIG: API hat default UND named Exports!
+
+```tsx
+// ✅ RICHTIG - Beide Import-Arten funktionieren:
+
+// Default Import für die Axios Instance
+import api from '@/utils/api';
+
+// Named Imports für spezifische API-Module
+import { authApi, chatApi, arenaApi, memoryApi, learningApi } from '@/utils/api';
+```
+
+### API-Module Übersicht:
+
+```tsx
+// Auth API
+authApi.login(email, password)
+authApi.register(email, password, name)
+authApi.logout()
+authApi.me()
+
+// Chat API
+chatApi.getChats()
+chatApi.getChat(chatId)
+chatApi.createChat({ title, mode, modelIds })
+chatApi.deleteChat(chatId)
+chatApi.sendMessage(chatId, content)
+chatApi.getMessages(chatId)
+
+// Arena API
+arenaApi.getModels()
+arenaApi.getModes()
+arenaApi.changeMode(chatId, mode)
+arenaApi.selectModels(chatId, modelIds)
+arenaApi.analyzeTask(content)
+
+// Memory API
+memoryApi.getMemories({ type, limit })
+memoryApi.recall(query, limit)
+memoryApi.getContext(chatId)
+memoryApi.getSettings()
+memoryApi.updateSettings(settings)
+memoryApi.deleteAll()
+memoryApi.export()
+
+// Knowledge API
+knowledgeApi.getEntries({ status, tags })
+knowledgeApi.createEntry({ content, tags })
+knowledgeApi.verifyEntry(entryId)
+knowledgeApi.search(query)
+
+// Learning API (Selbstlernendes System)
+learningApi.getProposedRules()
+learningApi.getActiveRules()
+learningApi.approveRule(ruleId)
+learningApi.rejectRule(ruleId, reason)
+learningApi.deleteRule(ruleId)
+learningApi.getStatistics()
+learningApi.recordEvent({ type, modelId, chatId, content })
+learningApi.recordCorrection({ messageId, originalContent, correctedContent })
+learningApi.recordFeedback({ messageId, isPositive, reason })
+
+// Teams API
+teamsApi.getTeams()
+teamsApi.createTeam({ name, description })
+teamsApi.inviteMember(teamId, email, role)
+teamsApi.removeMember(teamId, userId)
+
+// Prompts API
+promptsApi.getPrompts({ category, favorites })
+promptsApi.createPrompt({ title, content, category })
+promptsApi.toggleFavorite(promptId)
+promptsApi.suggest(description)
+```
+
+### Beispiel: API in einer Komponente verwenden
+
+```tsx
+import { useState, useEffect } from 'react';
+import { chatApi } from '@/utils/api';
+
+function ChatList() {
+  const [chats, setChats] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadChats() {
+      try {
+        const response = await chatApi.getChats();
+        setChats(response.chats);
+      } catch (error) {
+        console.error('Fehler beim Laden:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadChats();
+  }, []);
+
+  // ...
+}
+```
+
+---
+
+## 10. NOCH ZU IMPLEMENTIEREN
+
+### 10.1 Chat-Komponenten (Priorität: HOCH)
 
 ```
 /components/chat/
@@ -612,7 +710,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 └── index.ts
 ```
 
-### 9.2 Arena-Komponenten (Priorität: HOCH)
+### 10.2 Arena-Komponenten (Priorität: HOCH)
 
 ```
 /components/arena/
@@ -623,7 +721,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 └── index.ts
 ```
 
-### 9.3 Memory-Komponenten (Priorität: MITTEL)
+### 10.3 Memory-Komponenten (Priorität: MITTEL)
 
 ```
 /components/memory/
@@ -633,29 +731,29 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 └── MemorySettings.tsx
 ```
 
-### 9.4 Fehlende UI-Komponenten
+### 10.4 Fehlende UI-Komponenten
 
 | Komponente | Beschreibung |
 |------------|--------------|
-| `Switch` | Toggle Switch |
-| `Slider` | Range Slider |
-| `Skeleton` | Loading Skeletons |
-| `Alert` | Alert Banners |
-| `Toast` | Toast Container |
-| `Sheet` | Slide-over Panel |
-| `Command` | Command Palette |
+| Switch | Toggle Switch |
+| Slider | Range Slider |
+| Skeleton | Loading Skeletons |
+| Alert | Alert Banners |
+| Toast | Toast Container |
+| Sheet | Slide-over Panel |
+| Command | Command Palette |
 
-### 9.5 Fehlende Pages
+### 10.5 Fehlende Pages
 
 | Page | Pfad | Beschreibung |
 |------|------|--------------|
-| `MemoryPage` | `/memory` | Memory-Verwaltung |
-| `NotFoundPage` | `*` | 404 Seite |
-| `OnboardingPage` | `/onboarding` | Erste Schritte |
+| MemoryPage | `/memory` | Memory-Verwaltung |
+| NotFoundPage | `*` | 404 Seite |
+| OnboardingPage | `/onboarding` | Erste Schritte |
 
 ---
 
-## 10. QUALITÄTS-CHECKLISTE
+## 11. QUALITÄTS-CHECKLISTE
 
 ### Vor jedem Commit prüfen:
 
@@ -768,7 +866,8 @@ export { NewPage } from './NewPage';
 1. **Lese diese Anleitung vollständig**
 2. **Prüfe existierende Komponenten** bevor du neue erstellst
 3. **Halte dich an die Import-Konventionen**
-4. **Teste auf verschiedenen Bildschirmgrößen**
-5. **Frage bei Unklarheiten nach**
+4. **Nutze die API-Module** für Backend-Kommunikation
+5. **Teste auf verschiedenen Bildschirmgrößen**
+6. **Frage bei Unklarheiten nach**
 
-**Viel Erfolg!** 🎨
+**Viel Erfolg! 🎨**
