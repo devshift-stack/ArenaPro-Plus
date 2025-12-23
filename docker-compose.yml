@@ -80,6 +80,11 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio_secret_key}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-your_encryption_key_min_32_chars}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      API_URL: ${API_URL:-http://localhost:3001/api}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
     ports:
       - "3001:3001"
     depends_on:

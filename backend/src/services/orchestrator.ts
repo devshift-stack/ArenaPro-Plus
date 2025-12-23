@@ -217,15 +217,90 @@ export class Orchestrator {
     history: Message[],
     learningRules: string
   ): Promise<OrchestratorResult> {
-    // TODO: Echter OpenRouter API Call
     logger.info(`Calling model: ${model.id}`);
-    
-    return {
-      response: `[${model.name}] Placeholder-Antwort. OpenRouter API-Integration erforderlich.`,
-      modelId: model.id,
-      tokens: { input: 100, output: 50 },
-      cost: (100 * model.costPerInputToken) + (50 * model.costPerOutputToken),
-    };
+
+    // Build messages array
+    const messages: Array<{ role: string; content: string }> = [];
+
+    // Add system prompt with learning rules if available
+    if (learningRules) {
+      messages.push({
+        role: 'system',
+        content: `Du bist ein hilfreicher AI-Assistent. Beachte folgende Regeln:\n${learningRules}`,
+      });
+    } else {
+      messages.push({
+        role: 'system',
+        content: 'Du bist ein hilfreicher AI-Assistent.',
+      });
+    }
+
+    // Add chat history
+    for (const msg of history) {
+      messages.push({
+        role: msg.role,
+        content: msg.content,
+      });
+    }
+
+    // Add current user message
+    messages.push({
+      role: 'user',
+      content: content,
+    });
+
+    try {
+      const response = await fetch(`${config.openrouter.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${config.openrouter.apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': config.frontendUrl,
+          'X-Title': 'AI Arena',
+        },
+        body: JSON.stringify({
+          model: model.id,
+          messages: messages,
+          max_tokens: 4096,
+          temperature: 0.7,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        logger.error(`OpenRouter API error: ${response.status} - ${errorText}`);
+        throw new Error(`OpenRouter API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      const assistantMessage = data.choices?.[0]?.message?.content || 'Keine Antwort erhalten.';
+      const usage = data.usage || { prompt_tokens: 0, completion_tokens: 0 };
+
+      const inputTokens = usage.prompt_tokens || 0;
+      const outputTokens = usage.completion_tokens || 0;
+      const cost = (inputTokens * model.costPerInputToken) + (outputTokens * model.costPerOutputToken);
+
+      logger.info(`Model ${model.id} responded with ${inputTokens} input, ${outputTokens} output tokens`);
+
+      return {
+        response: assistantMessage,
+        modelId: model.id,
+        tokens: { input: inputTokens, output: outputTokens },
+        cost: cost,
+      };
+    } catch (error) {
+      logger.error(`Error calling model ${model.id}:`, error);
+
+      // Return error message instead of throwing
+      return {
+        response: `Fehler beim Aufrufen von ${model.name}: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`,
+        modelId: model.id,
+        tokens: { input: 0, output: 0 },
+        cost: 0,
+        metadata: { error: true },
+      };
+    }
   }
 
   private async synthesizeResponses(responses: OrchestratorResult[], query: string): Promise<OrchestratorResult> {

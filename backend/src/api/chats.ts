@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import prisma from '../utils/prisma.js';
 import { logger } from '../utils/logger.js';
+import { orchestrator } from '../services/orchestrator.js';
 
 // ════════════════════════════════════════════════════════════════════════════
 // SCHEMAS
@@ -218,19 +219,30 @@ export async function chatsRoutes(app: FastifyInstance) {
         },
       });
 
-      // TODO: Call Arena Orchestrator for AI response
-      // For now, return placeholder
+      // Call Arena Orchestrator for AI response
+      const result = await orchestrator.processMessage({
+        userId,
+        chatId: id,
+        content: body.content,
+        mode: chat.mode as 'AUTO_SELECT' | 'COLLABORATIVE' | 'DIVIDE_CONQUER' | 'PROJECT' | 'TESTER',
+        selectedModels: chat.selectedModels,
+      });
+
+      // Save assistant message
       const assistantMessage = await prisma.message.create({
         data: {
           chatId: id,
           role: 'ASSISTANT',
-          content: 'This is a placeholder response. The Arena Orchestrator will be integrated here.',
-          modelId: 'anthropic/claude-3-sonnet',
+          content: result.response,
+          modelId: result.modelId,
+          tokens: result.tokens.input + result.tokens.output,
+          cost: result.cost,
+          metadata: result.metadata || {},
         },
       });
 
-      return reply.send({ 
-        userMessage, 
+      return reply.send({
+        userMessage,
         assistantMessage,
       });
     } catch (error) {
