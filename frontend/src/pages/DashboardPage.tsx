@@ -11,44 +11,15 @@ import {
   Sparkles,
   Users,
   Brain,
+  Loader2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { useChat } from '@/hooks/useChat';
+import { useStats } from '@/hooks/useStats';
 import { formatRelativeTime } from '@/lib/utils';
-
-const stats = [
-  {
-    name: 'Chats',
-    value: '127',
-    change: '+12%',
-    icon: MessageSquare,
-    color: 'cyan',
-  },
-  {
-    name: 'Nachrichten',
-    value: '1,842',
-    change: '+8%',
-    icon: FileText,
-    color: 'blue',
-  },
-  {
-    name: 'KB Einträge',
-    value: '456',
-    change: '+24',
-    icon: BookOpen,
-    color: 'green',
-  },
-  {
-    name: 'Kosten',
-    value: '$12.50',
-    change: 'diesen Monat',
-    icon: DollarSign,
-    color: 'amber',
-  },
-];
 
 const quickActions = [
   {
@@ -77,8 +48,41 @@ const quickActions = [
 export function DashboardPage() {
   const { user } = useAuth();
   const { chats, isLoadingChats } = useChat();
+  const { arenaStats, knowledgeStats, memoryStats, isLoading: isLoadingStats } = useStats();
 
   const recentChats = chats?.slice(0, 5) || [];
+
+  // Build stats array from real data
+  const stats = [
+    {
+      name: 'Chats',
+      value: arenaStats.totalChats.toLocaleString(),
+      change: 'gesamt',
+      icon: MessageSquare,
+      color: 'cyan',
+    },
+    {
+      name: 'Nachrichten',
+      value: arenaStats.totalMessages.toLocaleString(),
+      change: `${(arenaStats.totalTokens / 1000).toFixed(0)}k Tokens`,
+      icon: FileText,
+      color: 'blue',
+    },
+    {
+      name: 'KB Einträge',
+      value: knowledgeStats.total.toLocaleString(),
+      change: `${knowledgeStats.verified} verifiziert`,
+      icon: BookOpen,
+      color: 'green',
+    },
+    {
+      name: 'Kosten',
+      value: `$${arenaStats.estimatedCost}`,
+      change: 'geschätzt',
+      icon: DollarSign,
+      color: 'amber',
+    },
+  ];
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
@@ -100,11 +104,14 @@ export function DashboardPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-slate-400">{stat.name}</p>
-                  <p className="mt-1 text-2xl font-bold text-white">
-                    {stat.value}
-                  </p>
-                  <p className="mt-1 flex items-center gap-1 text-xs text-green-400">
-                    <TrendingUp className="h-3 w-3" />
+                  {isLoadingStats ? (
+                    <div className="mt-1 h-8 w-16 animate-pulse rounded bg-slate-800" />
+                  ) : (
+                    <p className="mt-1 text-2xl font-bold text-white">
+                      {stat.value}
+                    </p>
+                  )}
+                  <p className="mt-1 flex items-center gap-1 text-xs text-slate-400">
                     {stat.change}
                   </p>
                 </div>
@@ -258,20 +265,26 @@ export function DashboardPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-400">Gespeicherte Fakten</span>
-                  <span className="text-white font-medium">42</span>
+              {isLoadingStats ? (
+                <div className="flex justify-center py-4">
+                  <Loader2 className="h-5 w-5 animate-spin text-slate-500" />
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-400">Präferenzen</span>
-                  <span className="text-white font-medium">12</span>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-400">Gespeicherte Fakten</span>
+                    <span className="text-white font-medium">{memoryStats.facts}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-400">Präferenzen</span>
+                    <span className="text-white font-medium">{memoryStats.preferences}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-400">Kontext-Einträge</span>
+                    <span className="text-white font-medium">{memoryStats.context}</span>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-400">Kontext-Einträge</span>
-                  <span className="text-white font-medium">156</span>
-                </div>
-              </div>
+              )}
               <Link to="/memory">
                 <Button variant="ghost" className="w-full mt-4" size="sm">
                   Memory verwalten

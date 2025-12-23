@@ -113,6 +113,9 @@ export const chatApi = {
   createChat: (params: { title?: string; mode?: string; modelIds?: string[] }) =>
     apiHelpers.post<{ chat: object }>('/chats', params),
 
+  updateChat: (chatId: string, data: { title?: string; mode?: string; selectedModels?: string[] }) =>
+    apiHelpers.put<{ chat: object }>(`/chats/${chatId}`, data),
+
   deleteChat: (chatId: string) => apiHelpers.delete(`/chats/${chatId}`),
 
   sendMessage: (chatId: string, content: string) =>
@@ -136,6 +139,12 @@ export const arenaApi = {
 
   analyzeTask: (content: string) =>
     apiHelpers.post<{ analysis: object }>('/arena/analyze', { content }),
+
+  recommend: (task: string) =>
+    apiHelpers.post<{ recommendations: Array<{ modelId: string; confidence: number; reason: string }> }>('/arena/recommend', { task }),
+
+  getStats: () =>
+    apiHelpers.get<{ stats: object }>('/arena/stats'),
 };
 
 // Memory API
@@ -154,6 +163,8 @@ export const memoryApi = {
   updateSettings: (settings: object) =>
     apiHelpers.put<{ settings: object }>('/memory/settings', settings),
 
+  deleteMemory: (memoryId: string) => apiHelpers.delete(`/memory/${memoryId}`),
+
   deleteAll: () => apiHelpers.delete('/memory/all'),
 
   export: () => apiHelpers.post<{ data: object }>('/memory/export'),
@@ -164,14 +175,26 @@ export const knowledgeApi = {
   getEntries: (params?: { status?: string; tags?: string[] }) =>
     apiHelpers.get<{ entries: object[] }>('/knowledge', params),
 
+  getEntry: (entryId: string) =>
+    apiHelpers.get<{ entry: object }>(`/knowledge/${entryId}`),
+
   createEntry: (data: { content: string; tags?: string[] }) =>
     apiHelpers.post<{ entry: object }>('/knowledge', data),
 
-  verifyEntry: (entryId: string) =>
-    apiHelpers.post(`/knowledge/${entryId}/verify`),
+  updateEntry: (entryId: string, data: { content?: string; tags?: string[] }) =>
+    apiHelpers.put<{ entry: object }>(`/knowledge/${entryId}`, data),
+
+  deleteEntry: (entryId: string) =>
+    apiHelpers.delete(`/knowledge/${entryId}`),
+
+  verifyEntry: (entryId: string, data?: { modelId?: string; isCorrect?: boolean; notes?: string }) =>
+    apiHelpers.post(`/knowledge/${entryId}/verify`, data),
 
   search: (query: string) =>
     apiHelpers.post<{ results: object[] }>('/knowledge/search', { query }),
+
+  getStats: () =>
+    apiHelpers.get<{ stats: object }>('/knowledge/stats/overview'),
 };
 
 // Learning API
@@ -194,6 +217,9 @@ export const learningApi = {
   getStatistics: () =>
     apiHelpers.get<{ statistics: object }>('/learning/statistics'),
 
+  getInstructions: () =>
+    apiHelpers.get<{ instructions: string; ruleCount: number }>('/learning/instructions'),
+
   recordEvent: (data: { type: string; modelId: string; chatId: string; content: string }) =>
     apiHelpers.post('/learning/events', data),
 
@@ -208,14 +234,21 @@ export const learningApi = {
 export const teamsApi = {
   getTeams: () => apiHelpers.get<{ teams: object[] }>('/teams'),
 
+  getTeam: (teamId: string) =>
+    apiHelpers.get<{ team: object }>(`/teams/${teamId}`),
+
   createTeam: (data: { name: string; description?: string }) =>
     apiHelpers.post<{ team: object }>('/teams', data),
+
+  deleteTeam: (teamId: string) =>
+    apiHelpers.delete(`/teams/${teamId}`),
 
   inviteMember: (teamId: string, email: string, role?: string) =>
     apiHelpers.post(`/teams/${teamId}/invite`, { email, role }),
 
-  removeMember: (teamId: string, userId: string) =>
-    apiHelpers.delete(`/teams/${teamId}/members/${userId}`),
+  // WICHTIG: memberId ist die ID des TeamMember-Eintrags, nicht die userId!
+  removeMember: (teamId: string, memberId: string) =>
+    apiHelpers.delete(`/teams/${teamId}/members/${memberId}`),
 
   updateSettings: (teamId: string, settings: object) =>
     apiHelpers.put(`/teams/${teamId}/settings`, settings),
@@ -226,14 +259,124 @@ export const promptsApi = {
   getPrompts: (params?: { category?: string; favorites?: boolean }) =>
     apiHelpers.get<{ prompts: object[] }>('/prompts', params),
 
-  createPrompt: (data: { title: string; content: string; category?: string }) =>
+  getPrompt: (promptId: string) =>
+    apiHelpers.get<{ prompt: object }>(`/prompts/${promptId}`),
+
+  createPrompt: (data: { title: string; content: string; category?: string; tags?: string[]; isPublic?: boolean }) =>
     apiHelpers.post<{ prompt: object }>('/prompts', data),
+
+  updatePrompt: (promptId: string, data: { title?: string; content?: string; category?: string; tags?: string[] }) =>
+    apiHelpers.put<{ prompt: object }>(`/prompts/${promptId}`, data),
+
+  deletePrompt: (promptId: string) =>
+    apiHelpers.delete(`/prompts/${promptId}`),
 
   toggleFavorite: (promptId: string) =>
     apiHelpers.post(`/prompts/${promptId}/favorite`),
 
   suggest: (description: string) =>
     apiHelpers.post<{ suggestion: string }>('/prompts/suggest', { description }),
+};
+
+// Files API
+export const filesApi = {
+  upload: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post<{ file: object }>('/files/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(res => res.data);
+  },
+
+  getFile: (fileId: string) =>
+    apiHelpers.get<{ file: object }>(`/files/${fileId}`),
+
+  getFiles: () =>
+    apiHelpers.get<{ files: object[] }>('/files'),
+
+  deleteFile: (fileId: string) =>
+    apiHelpers.delete(`/files/${fileId}`),
+};
+
+// Users API
+export const usersApi = {
+  getUsers: () =>
+    apiHelpers.get<{ users: object[] }>('/users'),
+
+  getUser: (userId: string) =>
+    apiHelpers.get<{ user: object }>(`/users/${userId}`),
+
+  searchUsers: (query: string) =>
+    apiHelpers.get<{ users: object[] }>('/users/search', { query }),
+
+  updateSettings: (settings: object) =>
+    apiHelpers.put<{ settings: object }>('/users/settings', settings),
+
+  deleteUser: (userId: string) =>
+    apiHelpers.delete(`/users/${userId}`),
+};
+
+// Integrations API
+export const integrationsApi = {
+  getIntegrations: () =>
+    apiHelpers.get<{ integrations: object[] }>('/integrations'),
+
+  connect: (data: { type: string; apiKey?: string; config?: object }) =>
+    apiHelpers.post<{ integration: object }>('/integrations/connect', data),
+
+  disconnect: (integrationId: string) =>
+    apiHelpers.delete(`/integrations/${integrationId}`),
+
+  getOAuthUrl: (integrationId: string) =>
+    apiHelpers.get<{ url: string }>(`/integrations/${integrationId}/oauth-url`),
+};
+
+// Admin API
+export const adminApi = {
+  getModels: () =>
+    apiHelpers.get<{ models: object[] }>('/admin/models'),
+
+  getDashboard: () =>
+    apiHelpers.get<{ dashboard: object }>('/admin/dashboard'),
+
+  getUsers: () =>
+    apiHelpers.get<{ users: object[] }>('/admin/users'),
+
+  grantAccess: (userId: string) =>
+    apiHelpers.post('/admin/users/grant-access', { userId }),
+
+  setTier: (userId: string, tier: string) =>
+    apiHelpers.post('/admin/users/set-tier', { userId, tier }),
+
+  revokeAccess: (userId: string) =>
+    apiHelpers.post('/admin/users/revoke-access', { userId }),
+
+  promoteUser: (userId: string) =>
+    apiHelpers.post(`/admin/users/${userId}/promote`),
+
+  createAdmin: (data: { email: string; password: string; name: string }) =>
+    apiHelpers.post('/admin/users/create-admin', data),
+
+  getProposedRules: () =>
+    apiHelpers.get<{ rules: object[] }>('/admin/rules/proposed'),
+
+  getActiveRules: () =>
+    apiHelpers.get<{ rules: object[] }>('/admin/rules/active'),
+
+  approveRule: (ruleId: string) =>
+    apiHelpers.post(`/admin/rules/${ruleId}/approve`),
+
+  rejectRule: (ruleId: string, reason: string) =>
+    apiHelpers.post(`/admin/rules/${ruleId}/reject`, { reason }),
+
+  deleteRule: (ruleId: string) =>
+    apiHelpers.delete(`/admin/rules/${ruleId}`),
+
+  getPatterns: () =>
+    apiHelpers.get<{ patterns: object[] }>('/admin/patterns'),
+
+  getEvents: () =>
+    apiHelpers.get<{ events: object[] }>('/admin/events'),
 };
 
 // Default Export
