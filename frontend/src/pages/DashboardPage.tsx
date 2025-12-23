@@ -59,28 +59,40 @@ export function DashboardPage() {
       value: arenaStats.totalChats.toLocaleString(),
       change: 'gesamt',
       icon: MessageSquare,
-      color: 'cyan',
+      bgColor: 'bg-cyan-500/10',
+      textColor: 'text-cyan-400',
+      gradientFrom: 'from-cyan-500',
+      gradientTo: 'to-cyan-600',
     },
     {
       name: 'Nachrichten',
       value: arenaStats.totalMessages.toLocaleString(),
       change: `${(arenaStats.totalTokens / 1000).toFixed(0)}k Tokens`,
       icon: FileText,
-      color: 'blue',
+      bgColor: 'bg-blue-500/10',
+      textColor: 'text-blue-400',
+      gradientFrom: 'from-blue-500',
+      gradientTo: 'to-blue-600',
     },
     {
       name: 'KB Einträge',
       value: knowledgeStats.total.toLocaleString(),
       change: `${knowledgeStats.verified} verifiziert`,
       icon: BookOpen,
-      color: 'green',
+      bgColor: 'bg-green-500/10',
+      textColor: 'text-green-400',
+      gradientFrom: 'from-green-500',
+      gradientTo: 'to-green-600',
     },
     {
       name: 'Kosten',
       value: `$${arenaStats.estimatedCost}`,
       change: 'geschätzt',
       icon: DollarSign,
-      color: 'amber',
+      bgColor: 'bg-amber-500/10',
+      textColor: 'text-amber-400',
+      gradientFrom: 'from-amber-500',
+      gradientTo: 'to-amber-600',
     },
   ];
 
@@ -115,13 +127,13 @@ export function DashboardPage() {
                     {stat.change}
                   </p>
                 </div>
-                <div className={`rounded-lg bg-${stat.color}-500/10 p-3`}>
-                  <stat.icon className={`h-6 w-6 text-${stat.color}-400`} />
+                <div className={`rounded-lg ${stat.bgColor} p-3`}>
+                  <stat.icon className={`h-6 w-6 ${stat.textColor}`} />
                 </div>
               </div>
             </CardContent>
             <div
-              className={`absolute bottom-0 left-0 h-1 w-full bg-gradient-to-r from-${stat.color}-500 to-${stat.color}-600`}
+              className={`absolute bottom-0 left-0 h-1 w-full bg-gradient-to-r ${stat.gradientFrom} ${stat.gradientTo}`}
             />
           </Card>
         ))}
