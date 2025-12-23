@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
-# Install OpenSSL for Prisma compatibility
-RUN apk add --no-cache openssl openssl-dev
+# Install OpenSSL for Prisma compatibility and curl for health checks
+RUN apk add --no-cache openssl openssl-dev curl
 
 WORKDIR /app
 
