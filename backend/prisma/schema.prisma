@@ -1,0 +1,649 @@
+// AI Arena Database Schema
+// PostgreSQL with pgvector extension for embeddings
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector")]
+}
+
+// ==================== USER MANAGEMENT ====================
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String
+  name          String
+  avatar        String?
+  role          UserRole  @default(USER)
+  isActive      Boolean   @default(true)
+  emailVerified Boolean   @default(false)
+  
+  // Two-Factor Auth
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret  String?
+  
+  // Timestamps
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastLoginAt   DateTime?
+  
+  // Encryption key for user's data
+  encryptionKeyId String?
+  
+  // Relations
+  ownedTeams     Team[]           @relation("TeamOwner")
+  teamMembers    TeamMember[]
+  chats          Chat[]
+  memories       Memory[]
+  knowledgeEntries KnowledgeEntry[]
+  apiKeys        ApiKey[]
+  sessions       Session[]
+  prompts        Prompt[]
+  files          File[]
+  integrations   Integration[]
+  
+  @@index([email])
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+  GUEST
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token        String   @unique
+  refreshToken String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  userAgent    String?
+  ipAddress    String?
+  
+  @@index([userId])
+  @@index([token])
+  @@map("sessions")
+}
+
+model ApiKey {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  keyHash     String   @unique
+  prefix      String   // First 8 chars for identification
+  permissions String[] // Array of permission strings
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([keyHash])
+  @@map("api_keys")
+}
+
+// ==================== TEAM MANAGEMENT ====================
+
+model Team {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  avatar      String?
+  ownerId     String
+  owner       User     @relation("TeamOwner", fields: [ownerId], references: [id])
+  
+  // Settings
+  settings    Json     @default("{}")
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  members     TeamMember[]
+  chats       Chat[]
+  memories    Memory[]
+  knowledgeEntries KnowledgeEntry[]
+  
+  @@index([ownerId])
+  @@map("teams")
+}
+
+model TeamMember {
+  id        String         @id @default(uuid())
+  teamId    String
+  team      Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      TeamMemberRole @default(MEMBER)
+  joinedAt  DateTime       @default(now())
+  
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+enum TeamMemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+// ==================== CHAT & CONVERSATIONS ====================
+
+model Chat {
+  id          String     @id @default(uuid())
+  title       String
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId      String?
+  team        Team?      @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  
+  // Arena Configuration
+  arenaMode   ArenaMode  @default(AUTO_SELECT)
+  modelIds    String[]   // Selected model IDs
+  
+  // Status
+  status      ChatStatus @default(ACTIVE)
+  isArchived  Boolean    @default(false)
+  
+  // Timestamps
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  
+  // Relations
+  messages    Message[]
+  files       File[]
+  
+  @@index([userId])
+  @@index([teamId])
+  @@index([status])
+  @@map("chats")
+}
+
+enum ArenaMode {
+  AUTO_SELECT
+  COLLABORATIVE
+  DIVIDE_CONQUER
+  PROJECT
+  TESTER
+}
+
+enum ChatStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+model Message {
+  id          String      @id @default(uuid())
+  chatId      String
+  chat        Chat        @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  
+  // Content
+  role        MessageRole
+  content     String
+  
+  // Model info (for AI messages)
+  modelId     String?
+  modelName   String?
+  
+  // Arena metadata
+  metadata    Json        @default("{}")
+  // Stores: taskId, subtaskId, confidence, processingTime, etc.
+  
+  // Token usage
+  promptTokens     Int?
+  completionTokens Int?
+  totalTokens      Int?
+  
+  // Timestamps
+  createdAt   DateTime    @default(now())
+  
+  // Relations
+  subTasks    SubTask[]
+  
+  @@index([chatId])
+  @@index([createdAt])
+  @@map("messages")
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+  ORCHESTRATOR
+}
+
+// For Divide & Conquer and Project modes
+model SubTask {
+  id          String        @id @default(uuid())
+  messageId   String
+  message     Message       @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  
+  // Task definition
+  title       String
+  description String
+  type        SubTaskType
+  
+  // Assignment
+  assignedModelId String?
+  
+  // Status
+  status      SubTaskStatus @default(PENDING)
+  result      String?
+  error       String?
+  
+  // Metrics
+  startedAt   DateTime?
+  completedAt DateTime?
+  
+  // Order
+  sequence    Int           @default(0)
+  
+  @@index([messageId])
+  @@map("sub_tasks")
+}
+
+enum SubTaskType {
+  CODE
+  WRITING
+  RESEARCH
+  ANALYSIS
+  CREATIVE
+  REVIEW
+  TEST
+}
+
+enum SubTaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+// ==================== MEMORY SYSTEM ====================
+
+model Memory {
+  id          String      @id @default(uuid())
+  
+  // Scope
+  scope       MemoryScope
+  userId      String?
+  user        User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId      String?
+  team        Team?       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  
+  // Content
+  type        MemoryType
+  content     String
+  contentEncrypted Bytes?  // AES-256-GCM encrypted content
+  
+  // Vector embedding for semantic search
+  embedding   Unsupported("vector(1536)")?
+  
+  // Source
+  sourceConversationId String?
+  sourceModelId       String?
+  
+  // Metadata
+  importance  Float       @default(0.5) // 0-1
+  accessCount Int         @default(0)
+  
+  // Timestamps
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  lastAccessedAt DateTime?
+  
+  // Encryption info
+  encryptionIV String?
+  
+  @@index([userId])
+  @@index([teamId])
+  @@index([scope])
+  @@index([type])
+  @@map("memories")
+}
+
+enum MemoryScope {
+  USER
+  TEAM
+  GLOBAL
+}
+
+enum MemoryType {
+  CONVERSATION
+  PREFERENCE
+  FACT
+  CONTEXT
+  PROJECT
+}
+
+// ==================== KNOWLEDGE BASE ====================
+
+model KnowledgeEntry {
+  id          String         @id @default(uuid())
+  
+  // Content
+  title       String
+  content     String
+  category    String[]
+  
+  // Source
+  userId      String?
+  user        User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  teamId      String?
+  team        Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  sourceConversationId String?
+  sourceModelId       String?
+  
+  // Status
+  status      KBStatus       @default(BETA)
+  
+  // Vector embedding
+  embedding   Unsupported("vector(1536)")?
+  
+  // Metadata
+  reliability Float          @default(0.0)
+  accessCount Int            @default(0)
+  
+  // Timestamps
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  lastAccessedAt DateTime?
+  
+  // Relations
+  verifications KBVerification[]
+  
+  @@index([status])
+  @@index([userId])
+  @@index([teamId])
+  @@map("knowledge_entries")
+}
+
+enum KBStatus {
+  BETA
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model KBVerification {
+  id           String         @id @default(uuid())
+  entryId      String
+  entry        KnowledgeEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  
+  // Verification details
+  modelId      String
+  verified     Boolean
+  confidence   Float          // 0-1
+  notes        String?
+  
+  // Timestamp
+  createdAt    DateTime       @default(now())
+  
+  @@index([entryId])
+  @@map("kb_verifications")
+}
+
+// ==================== PROMPT LIBRARY ====================
+
+model Prompt {
+  id          String       @id @default(uuid())
+  
+  // Content
+  name        String
+  description String?
+  template    String
+  category    String[]
+  variables   Json         @default("[]") // Array of variable definitions
+  
+  // Author
+  userId      String?
+  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  isSystem    Boolean      @default(false) // System-provided prompts
+  
+  // Metrics
+  usageCount  Int          @default(0)
+  successRate Float        @default(0.0)
+  avgRating   Float        @default(0.0)
+  
+  // Version control
+  version     Int          @default(1)
+  
+  // Best practices and examples
+  bestPractices String[]
+  examples    Json         @default("[]")
+  
+  // Timestamps
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  
+  // Relations
+  variants    PromptVariant[]
+  
+  @@index([category])
+  @@index([userId])
+  @@map("prompts")
+}
+
+model PromptVariant {
+  id          String   @id @default(uuid())
+  promptId    String
+  prompt      Prompt   @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  
+  // Variant content
+  template    String
+  
+  // A/B test results
+  usageCount  Int      @default(0)
+  successRate Float    @default(0.0)
+  
+  // Status
+  isActive    Boolean  @default(true)
+  
+  // Timestamps
+  createdAt   DateTime @default(now())
+  
+  @@index([promptId])
+  @@map("prompt_variants")
+}
+
+// ==================== RULEBOOK (GESETZBUCH) ====================
+
+model Rule {
+  id          String      @id @default(uuid())
+  
+  // Content
+  name        String
+  description String
+  rule        String      // The actual rule text
+  category    RuleCategory
+  
+  // Priority (higher = more important)
+  priority    Int         @default(100)
+  
+  // Scope
+  isGlobal    Boolean     @default(true)
+  teamId      String?     // If not global, applies to specific team
+  
+  // Status
+  isActive    Boolean     @default(true)
+  
+  // Timestamps
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  @@index([category])
+  @@index([isActive])
+  @@map("rules")
+}
+
+enum RuleCategory {
+  CORE
+  BEHAVIOR
+  TASK
+  SAFETY
+  QUALITY
+}
+
+// ==================== FILE STORAGE ====================
+
+model File {
+  id          String    @id @default(uuid())
+  
+  // Ownership
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chatId      String?
+  chat        Chat?     @relation(fields: [chatId], references: [id], onDelete: SetNull)
+  
+  // File info
+  name        String
+  originalName String
+  mimeType    String
+  size        Int       // bytes
+  
+  // Storage
+  storageKey  String    // S3/MinIO key
+  storageProvider String @default("minio")
+  
+  // Status
+  status      FileStatus @default(UPLOADED)
+  
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime?
+  
+  @@index([userId])
+  @@index([chatId])
+  @@map("files")
+}
+
+enum FileStatus {
+  UPLOADING
+  UPLOADED
+  PROCESSING
+  READY
+  ERROR
+  DELETED
+}
+
+// ==================== INTEGRATIONS ====================
+
+model Integration {
+  id          String           @id @default(uuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Integration type
+  provider    IntegrationProvider
+  
+  // Credentials (encrypted)
+  accessToken     String?
+  refreshToken    String?
+  tokenExpiresAt  DateTime?
+  
+  // Provider-specific data
+  providerData    Json         @default("{}")
+  
+  // Status
+  isConnected Boolean          @default(true)
+  lastSyncAt  DateTime?
+  
+  // Timestamps
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  
+  @@unique([userId, provider])
+  @@index([userId])
+  @@map("integrations")
+}
+
+enum IntegrationProvider {
+  GOOGLE_DRIVE
+  GITHUB
+  DROPBOX
+  NOTION
+}
+
+// ==================== MODELS REGISTRY ====================
+
+model AIModel {
+  id              String   @id @default(uuid())
+  
+  // OpenRouter ID
+  openRouterId    String   @unique
+  
+  // Display info
+  name            String
+  provider        String
+  description     String?
+  
+  // Capabilities
+  capabilities    String[] // code, writing, reasoning, etc.
+  contextLength   Int
+  
+  // Pricing (per 1M tokens)
+  inputPrice      Float
+  outputPrice     Float
+  
+  // Performance scores (0-100)
+  speedScore      Int      @default(50)
+  qualityScore    Int      @default(50)
+  
+  // Specialty areas
+  specialties     Json     @default("{}") // { code: 90, writing: 80, ... }
+  
+  // Status
+  isActive        Boolean  @default(true)
+  
+  // Timestamps
+  updatedAt       DateTime @updatedAt
+  
+  @@index([provider])
+  @@index([isActive])
+  @@map("ai_models")
+}
+
+// ==================== ANALYTICS ====================
+
+model UsageLog {
+  id          String   @id @default(uuid())
+  
+  // User/Team
+  userId      String?
+  teamId      String?
+  
+  // Usage details
+  modelId     String
+  chatId      String?
+  arenaMode   ArenaMode?
+  
+  // Tokens
+  promptTokens     Int
+  completionTokens Int
+  totalTokens      Int
+  
+  // Cost
+  cost        Float
+  
+  // Timestamp
+  createdAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([teamId])
+  @@index([createdAt])
+  @@map("usage_logs")
+}
