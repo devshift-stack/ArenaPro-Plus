@@ -13,14 +13,14 @@ import { cacheDelete } from '../utils/redis.js';
 
 export const ALL_MODELS = [
   // ══════════════════════════════════════════════════════════════════════════
-  // FREE TIER - Günstige Modelle für alle User
+  // FREE TIER - Claude Haiku als Standard (verifiziert funktionsfähig)
   // ══════════════════════════════════════════════════════════════════════════
   {
     id: 'anthropic/claude-3-haiku',
     name: 'Claude 3 Haiku',
     provider: 'Anthropic',
-    description: 'Schnell und günstig für einfache Aufgaben',
-    capabilities: ['chat', 'summarization', 'simple-tasks'],
+    description: 'Schnell und günstig für alle Aufgaben',
+    capabilities: ['chat', 'summarization', 'reasoning', 'coding', 'analysis', 'creative', 'general'],
     contextWindow: 200000,
     costPerInputToken: 0.00000025,
     costPerOutputToken: 0.00000125,
@@ -37,31 +37,7 @@ export const ALL_MODELS = [
     costPerInputToken: 0.00000015,
     costPerOutputToken: 0.0000006,
     tier: 'FREE',
-    isDefault: true,
-  },
-  {
-    id: 'google/gemini-flash-1.5',
-    name: 'Gemini 1.5 Flash',
-    provider: 'Google',
-    description: 'Schnelles Google-Modell',
-    capabilities: ['chat', 'reasoning', 'fast'],
-    contextWindow: 1000000,
-    costPerInputToken: 0.000000075,
-    costPerOutputToken: 0.0000003,
-    tier: 'FREE',
-    isDefault: true,
-  },
-  {
-    id: 'mistralai/mistral-small-24b-instruct-2501',
-    name: 'Mistral Small',
-    provider: 'Mistral',
-    description: 'Effizientes Mistral-Modell',
-    capabilities: ['chat', 'reasoning'],
-    contextWindow: 32000,
-    costPerInputToken: 0.0000001,
-    costPerOutputToken: 0.0000003,
-    tier: 'FREE',
-    isDefault: true,
+    isDefault: false,
   },
 
   // ══════════════════════════════════════════════════════════════════════════
