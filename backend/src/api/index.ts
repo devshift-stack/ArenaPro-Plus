@@ -11,6 +11,7 @@ import { filesRoutes } from './files.js';
 import { integrationsRoutes } from './integrations.js';
 import { modelsRoutes } from './models.js';
 import { learningRoutes } from './learning.js';
+import { adminRoutes } from './admin.js';
 
 // ════════════════════════════════════════════════════════════════════════════
 // REGISTER ALL ROUTES
@@ -32,4 +33,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.register(integrationsRoutes, { prefix: '/api/integrations' });
   app.register(modelsRoutes, { prefix: '/api/models' });
   app.register(learningRoutes, { prefix: '/api/learning' });
+  
+  // Admin Routes
+  app.register(adminRoutes, { prefix: '/api/admin' });
 }

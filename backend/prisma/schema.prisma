@@ -16,34 +16,30 @@ datasource db {
 // ════════════════════════════════════════════════════════════════════════════
 
 model User {
-  id         String   @id @default(cuid())
-  email      String   @unique
-  password   String
-  name       String
-  avatar     String?
-  role       UserRole @default(USER)
-  provider   String?  // OAuth provider: 'google', 'github', etc.
-  providerId String?  // OAuth provider user ID
-  settings   Json     @default("{}")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  avatar    String?
+  role      UserRole @default(USER)
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  chats               Chat[]
-  messages            Message[]
-  teams               TeamMember[]
-  ownedTeams          Team[]              @relation("TeamOwner")
-  memories            Memory[]
-  memorySettings      MemorySettings?
-  knowledgeEntries    KnowledgeEntry[]
-  verifications       KnowledgeVerification[]
-  prompts             Prompt[]
-  integrations        Integration[]
-  learningEvents      LearningEvent[]
-  approvedRules       ActiveRule[]
-  modelAccessRequests ModelAccessRequest[]
-  modelAccesses       ModelAccess[]
-  approvedRequests    ModelAccessRequest[] @relation("ApprovedBy")
+  chats             Chat[]
+  messages          Message[]
+  teams             TeamMember[]
+  ownedTeams        Team[]              @relation("TeamOwner")
+  memories          Memory[]
+  memorySettings    MemorySettings?
+  knowledgeEntries  KnowledgeEntry[]
+  verifications     KnowledgeVerification[]
+  prompts           Prompt[]
+  integrations      Integration[]
+  learningEvents    LearningEvent[]
+  approvedRules     ActiveRule[]
+  modelAccess       ModelAccess?
 
   @@index([email])
 }
@@ -328,18 +324,20 @@ enum LearningEventType {
 }
 
 model ProposedRule {
-  id              String             @id @default(cuid())
-  title           String
-  description     String
-  instruction     String
-  category        String
-  severity        RuleSeverity       @default(MEDIUM)
-  examples        Json               @default("[]")
-  confidence      Float              @default(0.5)
-  status          ProposedRuleStatus @default(PENDING)
-  rejectionReason String?
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  id               String             @id @default(cuid())
+  title            String
+  description      String
+  instruction      String
+  category         String
+  severity         RuleSeverity       @default(MEDIUM)
+  examples         Json               @default("[]")
+  confidence       Float              @default(0.5)
+  status           ProposedRuleStatus @default(PENDING)
+  rejectionReason  String?
+  affectedModels   String[]           @default([])
+  triggerPatternId String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
 
   @@index([status])
   @@index([createdAt])
@@ -379,56 +377,43 @@ model ActiveRule {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// MODEL ACCESS SYSTEM
-// Tier-based model access with approval workflow
+// MODEL ACCESS CONTROL
 // ════════════════════════════════════════════════════════════════════════════
 
-model ModelAccessRequest {
-  id           String             @id @default(cuid())
-  modelId      String             // OpenRouter model ID
-  tier         ModelTier          // standard or premium
-  duration     Int                // Duration in days (1, 3, or 7)
-  reason       String?            // User's reason for request
-  status       AccessRequestStatus @default(PENDING)
-  rejectionNote String?
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+model ModelAccess {
+  id            String   @id @default(cuid())
+  tier          String   @default("FREE") // FREE, STANDARD, PREMIUM
+  allowedModels String[] @default([])
+  grantedBy     String?
+  grantedAt     DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  // Relations
-  userId       String
-  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  approvedById String?
-  approvedBy   User?   @relation("ApprovedBy", fields: [approvedById], references: [id])
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
-  @@index([status])
   @@index([tier])
 }
 
-model ModelAccess {
-  id        String    @id @default(cuid())
-  modelId   String    // OpenRouter model ID
-  tier      ModelTier
-  expiresAt DateTime
-  createdAt DateTime  @default(now())
+// ════════════════════════════════════════════════════════════════════════════
+// ERROR PATTERNS FOR LEARNING
+// ════════════════════════════════════════════════════════════════════════════
 
-  // Relations
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+model ErrorPattern {
+  id              String   @id @default(cuid())
+  patternKey      String   @unique
+  category        String
+  occurrences     Int      @default(1)
+  modelIds        String[] @default([])
+  userIds         String[] @default([])
+  examples        String[] @default([])
+  hasProposedRule Boolean  @default(false)
+  firstSeen       DateTime @default(now())
+  lastSeen        DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  @@unique([userId, modelId])
-  @@index([userId])
-  @@index([expiresAt])
-}
-
-enum ModelTier {
-  BASIC
-  STANDARD
-  PREMIUM
-}
-
-enum AccessRequestStatus {
-  PENDING
-  APPROVED
-  REJECTED
+  @@index([category])
+  @@index([occurrences])
+  @@index([hasProposedRule])
 }
