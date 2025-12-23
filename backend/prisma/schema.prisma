@@ -47,6 +47,7 @@ model User {
   prompts        Prompt[]
   files          File[]
   integrations   Integration[]
+  learningEvents LearningEvent[]
   
   @@index([email])
   @@map("users")
@@ -212,6 +213,7 @@ model Message {
   
   // Relations
   subTasks    SubTask[]
+  learningEvents LearningEvent[]
   
   @@index([chatId])
   @@index([createdAt])
@@ -646,4 +648,167 @@ model UsageLog {
   @@index([teamId])
   @@index([createdAt])
   @@map("usage_logs")
+}
+
+// ==================== LEARNING SYSTEM (Selbstlernendes Regel-System) ====================
+
+// Erfasst alle Lern-Ereignisse (Fehler, Korrekturen, negatives Feedback)
+model LearningEvent {
+  id               String    @id @default(uuid())
+  
+  // Referenzen
+  chatId           String
+  messageId        String
+  message          Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  modelId          String
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Event Details
+  eventType        LearningEventType
+  originalContent  String
+  correctedContent String?
+  errorCategory    String?
+  errorDescription String?
+  
+  // Metadata
+  metadata         Json      @default("{}")
+  
+  // Timestamps
+  createdAt        DateTime  @default(now())
+  
+  @@index([errorCategory])
+  @@index([modelId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("learning_events")
+}
+
+enum LearningEventType {
+  ERROR
+  CORRECTION
+  NEGATIVE_FEEDBACK
+  REGENERATION
+}
+
+// Vorgeschlagene Regeln (warten auf Admin-Bestätigung)
+model ProposedRule {
+  id               String           @id @default(uuid())
+  
+  // Regel-Definition
+  title            String
+  description      String
+  ruleType         ProposedRuleType
+  priority         RulePriority     @default(MEDIUM)
+  scope            RuleScope        @default(GLOBAL)
+  
+  // Targets
+  targetModels     String[]         // Array von Model-IDs
+  condition        String?          // Wann die Regel gilt
+  action           String           // Die konkrete Anweisung
+  
+  // Beispiele
+  examples         Json             @default("[]") // [{bad: "...", good: "..."}]
+  
+  // Quellen
+  sourceEvents     String[]         // IDs der Lern-Events
+  
+  // Metriken
+  confidence       Float            @default(0)
+  occurrences      Int              @default(0)
+  
+  // Status
+  status           ProposedRuleStatus @default(PROPOSED)
+  
+  // Entscheidung
+  decidedAt        DateTime?
+  decidedBy        String?
+  rejectionReason  String?
+  
+  // Timestamps
+  proposedAt       DateTime         @default(now())
+  
+  // Relations
+  activeRules      ActiveRule[]
+  
+  @@index([status])
+  @@index([priority])
+  @@index([ruleType])
+  @@map("proposed_rules")
+}
+
+enum ProposedRuleType {
+  INSTRUCTION
+  CONSTRAINT
+  PREFERENCE
+  FORMAT
+  BEHAVIOR
+}
+
+enum RulePriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RuleScope {
+  GLOBAL
+  MODEL
+  USER
+  TEAM
+}
+
+enum ProposedRuleStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+  DEPRECATED
+}
+
+// Aktive Regeln (vom Admin genehmigt)
+model ActiveRule {
+  id             String       @id @default(uuid())
+  
+  // Referenz zur Regel
+  ruleId         String
+  rule           ProposedRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  
+  // Aktivierung
+  activatedAt    DateTime     @default(now())
+  activatedBy    String
+  
+  // Version
+  version        Int          @default(1)
+  
+  // Status
+  isActive       Boolean      @default(true)
+  
+  @@index([isActive])
+  @@index([ruleId])
+  @@map("active_rules")
+}
+
+// Error Patterns für schnellere Erkennung
+model ErrorPattern {
+  id             String    @id @default(uuid())
+  
+  // Pattern
+  pattern        String
+  category       String
+  
+  // Statistiken
+  count          Int       @default(0)
+  models         String[]
+  
+  // Vorgeschlagene Lösung
+  suggestedFix   String?
+  
+  // Timestamps
+  lastSeen       DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+  
+  @@index([category])
+  @@index([count])
+  @@map("error_patterns")
 }

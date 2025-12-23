@@ -7,3 +7,4 @@ export { KnowledgeBasePage } from './KnowledgeBasePage';
 export { PromptsPage } from './PromptsPage';
 export { SettingsPage } from './SettingsPage';
 export { HandbookPage } from './HandbookPage';
+export { LearningRulesPage } from './LearningRulesPage';
