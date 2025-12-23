@@ -1,6 +1,6 @@
 // AI Arena - Chat Page with Arena Functionality
 import { useState, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Send, 
@@ -96,16 +96,23 @@ interface Message {
 
 export function ChatPage() {
   const { chatId } = useParams();
+  const navigate = useNavigate();
   const [input, setInput] = useState('');
   const [selectedMode, setSelectedMode] = useState('AUTO_SELECT');
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
+  const [currentChatId, setCurrentChatId] = useState<string | undefined>(chatId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
-  const { messages, sendMessage, isLoading, isSending } = useChat({ chatId });
+
+  const { messages, sendMessage, createChat, isLoading, isSending } = useChat({ chatId: currentChatId });
   const { models } = useArena();
+
+  // Sync chatId from URL
+  useEffect(() => {
+    setCurrentChatId(chatId);
+  }, [chatId]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -122,24 +129,39 @@ export function ChatPage() {
     setProgress(0);
 
     try {
-      // Simulate progress updates
+      // Progress updates
       const progressInterval = setInterval(() => {
         setProgress(prev => Math.min(prev + Math.random() * 15, 90));
       }, 500);
 
-      setProgressMessage('Analysiere Anfrage...');
-      
-      sendMessage(userMessage);
+      let targetChatId = currentChatId;
+
+      // Create new chat if needed
+      if (!targetChatId) {
+        setProgressMessage('Chat wird erstellt...');
+        const newChat = await createChat({ mode: selectedMode });
+        targetChatId = newChat.chat.id;
+        setCurrentChatId(targetChatId);
+        navigate(`/chat/${targetChatId}`, { replace: true });
+      }
+
+      setProgressMessage('Sende an AI...');
+
+      // Send message with explicit chatId
+      await sendMessage(userMessage, targetChatId);
 
       clearInterval(progressInterval);
       setProgress(100);
       setProgressMessage('Fertig!');
     } catch (error) {
       console.error('Send failed:', error);
+      setProgressMessage('Fehler beim Senden');
     } finally {
-      setIsProcessing(false);
-      setProgress(0);
-      setProgressMessage('');
+      setTimeout(() => {
+        setIsProcessing(false);
+        setProgress(0);
+        setProgressMessage('');
+      }, 500);
     }
   };
 

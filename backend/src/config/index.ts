@@ -54,6 +54,22 @@ export const config = {
     bucket: process.env.MINIO_BUCKET || 'ai-arena',
     useSSL: process.env.MINIO_USE_SSL === 'true',
   },
+
+  // OAuth
+  oauth: {
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID || '',
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+    },
+    github: {
+      clientId: process.env.GITHUB_CLIENT_ID || '',
+      clientSecret: process.env.GITHUB_CLIENT_SECRET || '',
+    },
+  },
+
+  // URLs
+  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
+  apiUrl: process.env.API_URL || 'http://localhost:3001',
 };
 
 export default config;

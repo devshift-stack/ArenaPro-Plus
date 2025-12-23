@@ -159,11 +159,12 @@ export function useChat({ chatId }: UseChatOptions = {}) {
     };
   }, [chatId, subscribe, queryClient]);
 
-  // Send message helper
+  // Send message helper - accepts optional chatId override for new chats
   const sendMessage = useCallback(
-    (content: string) => {
-      if (!chatId) return;
-      sendMessageMutation.mutate({ chatId, content });
+    (content: string, overrideChatId?: string) => {
+      const targetChatId = overrideChatId || chatId;
+      if (!targetChatId) return;
+      return sendMessageMutation.mutateAsync({ chatId: targetChatId, content });
     },
     [chatId, sendMessageMutation]
   );

@@ -16,15 +16,17 @@ datasource db {
 // ════════════════════════════════════════════════════════════════════════════
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String
-  avatar    String?
-  role      UserRole @default(USER)
-  settings  Json     @default("{}")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                String   @id @default(cuid())
+  email             String   @unique
+  password          String?  // Optional for OAuth users
+  name              String
+  avatar            String?
+  role              UserRole @default(USER)
+  settings          Json     @default("{}")
+  provider          String?  // "google", "github", "email"
+  providerAccountId String?  // Provider-specific user ID
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   // Relations
   chats             Chat[]
@@ -41,6 +43,7 @@ model User {
   approvedRules     ActiveRule[]
   modelAccess       ModelAccess?
 
+  @@unique([provider, providerAccountId])
   @@index([email])
 }
 
