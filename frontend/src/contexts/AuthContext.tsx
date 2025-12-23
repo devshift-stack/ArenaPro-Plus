@@ -1,13 +1,14 @@
 // AI Arena - Authentication Context
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { api } from '../utils/api';
+import api from '../utils/api';
 
-interface User {
+export interface User {
   id: string;
   email: string;
   name: string;
   avatar?: string;
   role: string;
+  plan?: string;
 }
 
 interface AuthContextType {

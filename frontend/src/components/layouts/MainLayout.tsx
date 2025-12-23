@@ -21,9 +21,9 @@ import {
   Zap,
 } from 'lucide-react';
 
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Avatar, AvatarFallback, AvatarImage } from '../components/ui/avatar';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,9 +31,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '../components/ui/dropdown-menu';
-import { ScrollArea } from '../components/ui/scroll-area';
-import { useAuth } from '../contexts/AuthContext';
+} from '../ui/dropdown-menu';
+import { ScrollArea } from '../ui/scroll-area';
+import { useAuth } from '../../contexts/AuthContext';
 
 const NAVIGATION = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
