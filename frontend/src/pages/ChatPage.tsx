@@ -25,26 +25,19 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
-import { Button } from '../components/ui/button';
-import { Textarea } from '../components/ui/textarea';
-import { ScrollArea } from '../components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   Select, 
   SelectContent, 
   SelectItem, 
   SelectTrigger, 
   SelectValue 
-} from '../components/ui/select';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '../components/ui/dropdown-menu';
-import { Badge } from '../components/ui/badge';
-import { Progress } from '../components/ui/progress';
-import { useArena } from '../hooks/useArena';
-import { useChat } from '../hooks/useChat';
+} from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { useArena } from '@/hooks/useArena';
+import { useChat } from '@/hooks/useChat';
 
 // Arena Mode Configuration
 const ARENA_MODES = [
@@ -111,8 +104,8 @@ export function ChatPage() {
   const [progressMessage, setProgressMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
-  const { messages, sendMessage, isLoading } = useChat(chatId);
-  const { models, analyzeTask } = useArena();
+  const { messages, sendMessage, isLoading, isSending } = useChat({ chatId });
+  const { models } = useArena();
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -136,11 +129,7 @@ export function ChatPage() {
 
       setProgressMessage('Analysiere Anfrage...');
       
-      await sendMessage({
-        message: userMessage,
-        mode: selectedMode,
-        selectedModels: selectedModels.length > 0 ? selectedModels : undefined,
-      });
+      sendMessage(userMessage);
 
       clearInterval(progressInterval);
       setProgress(100);
@@ -287,13 +276,14 @@ export function ChatPage() {
           {/* Input Box */}
           <div className="relative flex items-end gap-3">
             <div className="flex-1 relative">
-              <Textarea
+              <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyPress}
                 placeholder="Schreibe deine Nachricht..."
-                className="min-h-[60px] max-h-[200px] pr-24 bg-slate-900 border-slate-700 
-                           focus:border-cyan-500 focus:ring-cyan-500/20 resize-none"
+                className="w-full min-h-[60px] max-h-[200px] pr-24 bg-slate-900 border border-slate-700 
+                           focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/20 resize-none
+                           rounded-md px-3 py-2 text-white placeholder:text-slate-500"
                 disabled={isProcessing}
               />
               <div className="absolute right-2 bottom-2 flex items-center gap-1">
@@ -345,7 +335,15 @@ export function ChatPage() {
 }
 
 // Message Bubble Component
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({ message }: { message: {
+  id: string;
+  role: string;
+  content: string;
+  modelId?: string;
+  modelName?: string;
+  metadata?: Record<string, any>;
+  createdAt?: string;
+} }) {
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
 
