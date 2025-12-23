@@ -136,6 +136,12 @@ export const arenaApi = {
 
   analyzeTask: (content: string) =>
     apiHelpers.post<{ analysis: object }>('/arena/analyze', { content }),
+
+  recommend: (task: string) =>
+    apiHelpers.post<{ recommendations: Array<{ modelId: string; confidence: number; reason: string }> }>('/arena/recommend', { task }),
+
+  getStats: () =>
+    apiHelpers.get<{ stats: object }>('/arena/stats'),
 };
 
 // Memory API

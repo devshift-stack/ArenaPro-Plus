@@ -24,7 +24,7 @@ export function useArena() {
   } = useQuery({
     queryKey: ['models'],
     queryFn: async () => {
-      const response = await api.get('/models');
+      const response = await api.get('/arena/models');
       return response.data.models as Model[];
     },
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
@@ -61,7 +61,7 @@ export function useArena() {
   // Change arena mode for existing chat
   const changeModeMutation = useMutation({
     mutationFn: async ({ chatId, mode }: ChangeModeParams) => {
-      const response = await api.put(`/chats/${chatId}/mode`, { mode });
+      const response = await api.post(`/arena/chats/${chatId}/mode`, { mode });
       return response.data;
     },
     onSuccess: (_data, { chatId }) => {
@@ -72,7 +72,7 @@ export function useArena() {
   // Select models for chat
   const selectModelsMutation = useMutation({
     mutationFn: async ({ chatId, modelIds }: { chatId: string; modelIds: string[] }) => {
-      const response = await api.put(`/chats/${chatId}/models`, { modelIds });
+      const response = await api.post(`/arena/chats/${chatId}/models`, { modelIds });
       return response.data;
     },
     onSuccess: (_data, { chatId }) => {

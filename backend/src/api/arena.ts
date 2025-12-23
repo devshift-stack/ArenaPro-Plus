@@ -307,9 +307,65 @@ export async function arenaRoutes(app: FastifyInstance) {
   });
 
   // ══════════════════════════════════════════════════════════════════════════
+  // GET MODEL RECOMMENDATIONS
+  // ══════════════════════════════════════════════════════════════════════════
+
+  app.post('/recommend', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { task } = request.body as { task: string };
+
+      if (!task || task.trim().length === 0) {
+        return reply.status(400).send({ error: 'Task description required' });
+      }
+
+      const content = task.toLowerCase();
+      const recommendations: Array<{ modelId: string; confidence: number; reason: string }> = [];
+
+      // Analyze task and recommend models
+      if (content.includes('code') || content.includes('programming') || content.includes('debug') || content.includes('function')) {
+        recommendations.push(
+          { modelId: 'deepseek/deepseek-coder', confidence: 0.95, reason: 'Spezialisiert auf Code-Generierung und Debugging' },
+          { modelId: 'anthropic/claude-3-sonnet', confidence: 0.85, reason: 'Ausgezeichnet für komplexe Programmieraufgaben' }
+        );
+      } else if (content.includes('analyze') || content.includes('research') || content.includes('compare') || content.includes('analyse')) {
+        recommendations.push(
+          { modelId: 'anthropic/claude-3-opus', confidence: 0.92, reason: 'Beste Wahl für tiefgehende Analysen' },
+          { modelId: 'openai/gpt-4-turbo', confidence: 0.88, reason: 'Starke analytische Fähigkeiten' }
+        );
+      } else if (content.includes('write') || content.includes('creative') || content.includes('story') || content.includes('schreib')) {
+        recommendations.push(
+          { modelId: 'anthropic/claude-3-opus', confidence: 0.90, reason: 'Hervorragend für kreatives Schreiben' },
+          { modelId: 'openai/gpt-4o', confidence: 0.85, reason: 'Vielseitig und kreativ' }
+        );
+      } else if (content.includes('summarize') || content.includes('zusammenfass') || content.includes('quick') || content.includes('simple')) {
+        recommendations.push(
+          { modelId: 'anthropic/claude-3-haiku', confidence: 0.90, reason: 'Schnell und effizient für einfache Aufgaben' },
+          { modelId: 'google/gemini-pro-1.5', confidence: 0.80, reason: 'Gut für Zusammenfassungen' }
+        );
+      } else if (content.includes('translate') || content.includes('übersetz') || content.includes('language')) {
+        recommendations.push(
+          { modelId: 'mistral/mistral-large', confidence: 0.88, reason: 'Hervorragend für mehrsprachige Aufgaben' },
+          { modelId: 'anthropic/claude-3-sonnet', confidence: 0.85, reason: 'Starke Sprachfähigkeiten' }
+        );
+      } else {
+        // Default recommendations
+        recommendations.push(
+          { modelId: 'anthropic/claude-3-sonnet', confidence: 0.85, reason: 'Ausgewogene Leistung für allgemeine Aufgaben' },
+          { modelId: 'openai/gpt-4o', confidence: 0.80, reason: 'Vielseitig einsetzbar' }
+        );
+      }
+
+      return reply.send({ recommendations });
+    } catch (error) {
+      logger.error('Recommend models error:', error);
+      return reply.status(500).send({ error: 'Failed to get recommendations' });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
   // GET ARENA STATISTICS
   // ══════════════════════════════════════════════════════════════════════════
-  
+
   app.get('/stats', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { userId } = request.user as { userId: string };
