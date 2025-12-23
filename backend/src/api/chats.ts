@@ -201,7 +201,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       const userMessage = await prisma.message.create({
         data: {
           chatId: id,
-          role: 'user',
+          role: 'USER',
           content: body.content,
           userId,
         },
@@ -232,7 +232,7 @@ export async function chatsRoutes(app: FastifyInstance) {
       const assistantMessage = await prisma.message.create({
         data: {
           chatId: id,
-          role: 'assistant',
+          role: 'ASSISTANT',
           content: result.response,
           modelId: result.modelId,
           tokens: result.tokens.input + result.tokens.output,
