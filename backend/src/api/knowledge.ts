@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import prisma from '../utils/prisma.js';
 import { logger } from '../utils/logger.js';
+import { embeddingService } from '../services/embeddingService.js';
 
 // ════════════════════════════════════════════════════════════════════════════
 // SCHEMAS
@@ -84,12 +85,16 @@ export async function knowledgeRoutes(app: FastifyInstance) {
       const { userId } = request.user as { userId: string };
       const body = createEntrySchema.parse(request.body);
 
+      // Generate embedding for the content
+      const embedding = await embeddingService.generateEmbedding(body.content);
+
       const entry = await prisma.knowledgeEntry.create({
         data: {
           content: body.content,
           source: body.source,
           tags: body.tags,
           metadata: body.metadata || {},
+          embedding: embedding,
           userId,
           status: 'BETA', // New entries start in beta
         },
@@ -180,8 +185,32 @@ export async function knowledgeRoutes(app: FastifyInstance) {
       const { userId } = request.user as { userId: string };
       const body = searchSchema.parse(request.body);
 
-      // TODO: Implement vector similarity search
-      // For now, simple text search
+      // Try vector similarity search first
+      const vectorResults = await embeddingService.searchKnowledgeBySimilarity(
+        body.query,
+        {
+          userId,
+          limit: body.limit,
+          minSimilarity: 0.5, // Lower threshold for broader results
+        }
+      );
+
+      // If vector search returned results, use them
+      if (vectorResults.length > 0) {
+        // Filter by status and tags if provided
+        let filteredResults = vectorResults;
+        if (body.status) {
+          filteredResults = filteredResults.filter(r => r.status === body.status);
+        }
+        if (body.tags && body.tags.length > 0) {
+          filteredResults = filteredResults.filter(r =>
+            body.tags!.some(tag => r.tags.includes(tag))
+          );
+        }
+        return reply.send({ results: filteredResults, searchType: 'vector' });
+      }
+
+      // Fallback to text search if vector search failed or returned nothing
       const entries = await prisma.knowledgeEntry.findMany({
         where: {
           OR: [
@@ -199,7 +228,7 @@ export async function knowledgeRoutes(app: FastifyInstance) {
         take: body.limit,
       });
 
-      return reply.send({ results: entries });
+      return reply.send({ results: entries, searchType: 'text' });
     } catch (error) {
       if (error instanceof z.ZodError) {
         return reply.status(400).send({ error: error.errors });
@@ -266,13 +295,22 @@ export async function knowledgeRoutes(app: FastifyInstance) {
         return reply.status(404).send({ error: 'Entry not found' });
       }
 
+      // Regenerate embedding if content changed
+      let newEmbedding: number[] | undefined;
+      if (updates.content && updates.content !== entry.content) {
+        newEmbedding = await embeddingService.generateEmbedding(updates.content);
+      }
+
       const updatedEntry = await prisma.knowledgeEntry.update({
         where: { id },
         data: {
           content: updates.content,
           tags: updates.tags,
-          // Reset to beta if content changed
-          ...(updates.content ? { status: 'BETA' } : {}),
+          // Reset to beta and update embedding if content changed
+          ...(updates.content ? {
+            status: 'BETA',
+            embedding: newEmbedding,
+          } : {}),
         },
       });
 

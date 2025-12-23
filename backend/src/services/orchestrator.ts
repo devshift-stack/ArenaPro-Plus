@@ -8,6 +8,7 @@ import { logger } from '../utils/logger.js';
 import { learningEngine } from './learningEngine.js';
 import { AdminService, ALL_MODELS } from './adminService.js';
 import { config } from '../config/index.js';
+import { embeddingService } from './embeddingService.js';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -44,8 +45,8 @@ export class Orchestrator {
     const { userId, chatId, content, mode, selectedModels } = params;
 
     const availableModels = await AdminService.getAvailableModelsForUser(userId);
-    
-    let modelsToUse = selectedModels?.length 
+
+    let modelsToUse = selectedModels?.length
       ? availableModels.filter(m => selectedModels.includes(m.id))
       : availableModels;
 
@@ -56,19 +57,30 @@ export class Orchestrator {
     const learningRules = await learningEngine.getActiveRulesForPrompt();
     const history = await this.getChatHistory(chatId);
 
+    // RAG: Retrieve relevant context from knowledge base and memory
+    let ragContext = '';
+    try {
+      ragContext = await embeddingService.retrieveRelevantContext(content, userId);
+      if (ragContext) {
+        logger.info(`RAG: Retrieved ${ragContext.length} chars of context`);
+      }
+    } catch (error) {
+      logger.warn('RAG context retrieval failed:', error);
+    }
+
     switch (mode) {
       case 'AUTO_SELECT':
-        return this.autoSelectMode(content, modelsToUse, history, learningRules);
+        return this.autoSelectMode(content, modelsToUse, history, learningRules, ragContext);
       case 'COLLABORATIVE':
-        return this.collaborativeMode(content, modelsToUse, history, learningRules);
+        return this.collaborativeMode(content, modelsToUse, history, learningRules, ragContext);
       case 'DIVIDE_CONQUER':
-        return this.divideConquerMode(content, modelsToUse, history, learningRules);
+        return this.divideConquerMode(content, modelsToUse, history, learningRules, ragContext);
       case 'PROJECT':
-        return this.projectMode(content, modelsToUse, history, learningRules);
+        return this.projectMode(content, modelsToUse, history, learningRules, ragContext);
       case 'TESTER':
-        return this.testerMode(content, modelsToUse, history, learningRules);
+        return this.testerMode(content, modelsToUse, history, learningRules, ragContext);
       default:
-        return this.autoSelectMode(content, modelsToUse, history, learningRules);
+        return this.autoSelectMode(content, modelsToUse, history, learningRules, ragContext);
     }
   }
 
@@ -76,22 +88,24 @@ export class Orchestrator {
     content: string,
     models: ModelType[],
     history: Message[],
-    learningRules: string
+    learningRules: string,
+    ragContext: string = ''
   ): Promise<OrchestratorResult> {
     const taskType = this.analyzeTaskType(content);
     const selectedModel = this.selectModelForTask(taskType, models);
-    return this.callModel(selectedModel, content, history, learningRules);
+    return this.callModel(selectedModel, content, history, learningRules, ragContext);
   }
 
   private async collaborativeMode(
     content: string,
     models: ModelType[],
     history: Message[],
-    learningRules: string
+    learningRules: string,
+    ragContext: string = ''
   ): Promise<OrchestratorResult> {
     const selectedModels = models.slice(0, Math.min(3, models.length));
     const responses = await Promise.all(
-      selectedModels.map(model => this.callModel(model, content, history, learningRules))
+      selectedModels.map(model => this.callModel(model, content, history, learningRules, ragContext))
     );
     return this.synthesizeResponses(responses, content);
   }
@@ -100,7 +114,8 @@ export class Orchestrator {
     content: string,
     models: ModelType[],
     history: Message[],
-    learningRules: string
+    learningRules: string,
+    ragContext: string = ''
   ): Promise<OrchestratorResult> {
     const subtasks = [
       `Analysiere: ${content}`,
@@ -109,8 +124,8 @@ export class Orchestrator {
     ];
 
     const results = await Promise.all(
-      subtasks.map((task, i) => 
-        this.callModel(models[i % models.length], task, history, learningRules)
+      subtasks.map((task, i) =>
+        this.callModel(models[i % models.length], task, history, learningRules, ragContext)
       )
     );
 
@@ -132,13 +147,14 @@ export class Orchestrator {
     content: string,
     models: ModelType[],
     history: Message[],
-    learningRules: string
+    learningRules: string,
+    ragContext: string = ''
   ): Promise<OrchestratorResult> {
     const [planner, executor, reviewer] = [models[0], models[1] || models[0], models[2] || models[0]];
 
-    const plan = await this.callModel(planner, `Erstelle Plan für: ${content}`, history, learningRules);
-    const execution = await this.callModel(executor, `Führe aus: ${plan.response}`, history, learningRules);
-    const review = await this.callModel(reviewer, `Überprüfe: ${execution.response}`, history, learningRules);
+    const plan = await this.callModel(planner, `Erstelle Plan für: ${content}`, history, learningRules, ragContext);
+    const execution = await this.callModel(executor, `Führe aus: ${plan.response}`, history, learningRules, ragContext);
+    const review = await this.callModel(reviewer, `Überprüfe: ${execution.response}`, history, learningRules, ragContext);
 
     return {
       response: `## Ergebnis\n\n${execution.response}\n\n---\n\n## Review\n\n${review.response}`,
@@ -156,15 +172,16 @@ export class Orchestrator {
     content: string,
     models: ModelType[],
     history: Message[],
-    learningRules: string
+    learningRules: string,
+    ragContext: string = ''
   ): Promise<OrchestratorResult> {
     const testModels = models.slice(0, Math.min(3, models.length));
     const responses = await Promise.all(
-      testModels.map(model => this.callModel(model, content, history, learningRules))
+      testModels.map(model => this.callModel(model, content, history, learningRules, ragContext))
     );
 
     const comparison = this.compareResponses(responses);
-    
+
     if (comparison.consensus) {
       return { ...responses[0], metadata: { mode: 'TESTER', consensus: true } };
     }
@@ -215,25 +232,29 @@ export class Orchestrator {
     model: ModelType,
     content: string,
     history: Message[],
-    learningRules: string
+    learningRules: string,
+    ragContext: string = ''
   ): Promise<OrchestratorResult> {
     logger.info(`Calling model: ${model.id}`);
 
     // Build messages array
     const messages: Array<{ role: string; content: string }> = [];
 
-    // Add system prompt with learning rules if available
+    // Build system prompt with learning rules and RAG context
+    let systemPrompt = 'Du bist ein hilfreicher AI-Assistent.';
+
     if (learningRules) {
-      messages.push({
-        role: 'system',
-        content: `Du bist ein hilfreicher AI-Assistent. Beachte folgende Regeln:\n${learningRules}`,
-      });
-    } else {
-      messages.push({
-        role: 'system',
-        content: 'Du bist ein hilfreicher AI-Assistent.',
-      });
+      systemPrompt += `\n\nBeachte folgende Regeln:\n${learningRules}`;
     }
+
+    if (ragContext) {
+      systemPrompt += `\n\n${ragContext}`;
+    }
+
+    messages.push({
+      role: 'system',
+      content: systemPrompt,
+    });
 
     // Add chat history
     for (const msg of history) {

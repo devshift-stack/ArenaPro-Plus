@@ -253,9 +253,42 @@ export async function memoryRoutes(app: FastifyInstance) {
   });
 
   // ══════════════════════════════════════════════════════════════════════════
+  // GET MEMORY STATS
+  // ══════════════════════════════════════════════════════════════════════════
+
+  app.get('/stats', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { userId } = request.user as { userId: string };
+
+      const [facts, preferences, context] = await Promise.all([
+        prisma.memory.count({
+          where: { userId, type: 'SEMANTIC' },
+        }),
+        prisma.memory.count({
+          where: { userId, type: 'SHORT_TERM' },
+        }),
+        prisma.memory.count({
+          where: { userId, type: 'LONG_TERM' },
+        }),
+      ]);
+
+      return reply.send({
+        stats: {
+          facts,
+          preferences,
+          context,
+        },
+      });
+    } catch (error) {
+      logger.error('Get memory stats error:', error);
+      return reply.status(500).send({ error: 'Failed to get memory stats' });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
   // DELETE SINGLE MEMORY
   // ══════════════════════════════════════════════════════════════════════════
-  
+
   app.delete('/:id', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { userId } = request.user as { userId: string };
