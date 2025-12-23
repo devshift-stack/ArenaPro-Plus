@@ -1,72 +1,59 @@
-// AI Arena Backend Configuration
-import { z } from 'zod';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-const configSchema = z.object({
+export const config = {
   // Server
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  PORT: z.string().default('3001'),
-  HOST: z.string().default('0.0.0.0'),
-  
-  // Database
-  DATABASE_URL: z.string(),
-  
-  // Redis
-  REDIS_URL: z.string().default('redis://localhost:6379'),
-  
-  // JWT
-  JWT_SECRET: z.string().min(32),
-  JWT_ACCESS_EXPIRY: z.string().default('15m'),
-  JWT_REFRESH_EXPIRY: z.string().default('7d'),
-  
-  // OpenRouter
-  OPENROUTER_API_KEY: z.string(),
-  OPENROUTER_BASE_URL: z.string().default('https://openrouter.ai/api/v1'),
-  
-  // OpenAI (for embeddings)
-  OPENAI_API_KEY: z.string(),
-  
-  // MinIO/S3
-  MINIO_ENDPOINT: z.string().default('localhost'),
-  MINIO_PORT: z.string().default('9000'),
-  MINIO_ACCESS_KEY: z.string(),
-  MINIO_SECRET_KEY: z.string(),
-  MINIO_BUCKET: z.string().default('ai-arena'),
-  MINIO_USE_SSL: z.string().default('false'),
-  
-  // Encryption
-  ENCRYPTION_KEY: z.string().min(32), // 256-bit key for AES-256
-  
-  // Google OAuth
-  GOOGLE_CLIENT_ID: z.string().optional(),
-  GOOGLE_CLIENT_SECRET: z.string().optional(),
-  
-  // GitHub OAuth
-  GITHUB_CLIENT_ID: z.string().optional(),
-  GITHUB_CLIENT_SECRET: z.string().optional(),
-  
-  // Frontend URL
-  FRONTEND_URL: z.string().default('http://localhost:3000'),
-  
-  // Rate Limiting
-  RATE_LIMIT_MAX: z.string().default('100'),
-  RATE_LIMIT_WINDOW: z.string().default('60000'), // 1 minute
-  
-  // Logging
-  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
-});
+  port: parseInt(process.env.PORT || '3001', 10),
+  nodeEnv: process.env.NODE_ENV || 'development',
 
-const parseConfig = () => {
-  try {
-    return configSchema.parse(process.env);
-  } catch (error) {
-    console.error('❌ Invalid configuration:', error);
-    process.exit(1);
-  }
+  // Database
+  databaseUrl: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/aiarena',
+
+  // Redis
+  redis: {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379', 10),
+    password: process.env.REDIS_PASSWORD || undefined,
+  },
+
+  // JWT
+  jwt: {
+    secret: process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production',
+    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+    refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d',
+  },
+
+  // CORS
+  cors: {
+    origins: (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3000').split(','),
+  },
+
+  // OpenRouter API
+  openrouter: {
+    apiKey: process.env.OPENROUTER_API_KEY || '',
+    baseUrl: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
+  },
+
+  // OpenAI (for Embeddings)
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY || '',
+  },
+
+  // Encryption
+  encryption: {
+    key: process.env.ENCRYPTION_KEY || 'default-encryption-key-32-chars!',
+  },
+
+  // MinIO / S3
+  storage: {
+    endpoint: process.env.MINIO_ENDPOINT || 'localhost',
+    port: parseInt(process.env.MINIO_PORT || '9000', 10),
+    accessKey: process.env.MINIO_ACCESS_KEY || 'minioadmin',
+    secretKey: process.env.MINIO_SECRET_KEY || 'minioadmin',
+    bucket: process.env.MINIO_BUCKET || 'ai-arena',
+    useSSL: process.env.MINIO_USE_SSL === 'true',
+  },
 };
 
-export const config = parseConfig();
-
-export type Config = z.infer<typeof configSchema>;
+export default config;

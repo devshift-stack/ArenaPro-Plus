@@ -1,145 +1,210 @@
-// AI Arena - WebSocket Handler
 import { FastifyInstance } from 'fastify';
 import { WebSocket } from 'ws';
 import { logger } from '../utils/logger.js';
-import { redis } from '../utils/redis.js';
 
-interface WSClient {
+// ════════════════════════════════════════════════════════════════════════════
+// TYPES
+// ════════════════════════════════════════════════════════════════════════════
+
+interface WebSocketClient {
   socket: WebSocket;
   userId: string;
   chatId?: string;
 }
 
-const clients = new Map<string, WSClient>();
+// ════════════════════════════════════════════════════════════════════════════
+// WEBSOCKET MANAGER
+// ════════════════════════════════════════════════════════════════════════════
 
-export function setupWebSocket(app: FastifyInstance) {
-  app.get('/ws', { websocket: true }, (connection, req) => {
-    const socket = connection.socket;
-    const clientId = generateClientId();
+class WebSocketManager {
+  private clients: Map<string, WebSocketClient> = new Map();
 
-    logger.info(`WebSocket client connected: ${clientId}`);
+  addClient(id: string, client: WebSocketClient) {
+    this.clients.set(id, client);
+    logger.info(`WebSocket client connected: ${id}`);
+  }
+
+  removeClient(id: string) {
+    this.clients.delete(id);
+    logger.info(`WebSocket client disconnected: ${id}`);
+  }
+
+  sendToUser(userId: string, message: any) {
+    this.clients.forEach((client, id) => {
+      if (client.userId === userId && client.socket.readyState === WebSocket.OPEN) {
+        client.socket.send(JSON.stringify(message));
+      }
+    });
+  }
+
+  sendToChat(chatId: string, message: any) {
+    this.clients.forEach((client, id) => {
+      if (client.chatId === chatId && client.socket.readyState === WebSocket.OPEN) {
+        client.socket.send(JSON.stringify(message));
+      }
+    });
+  }
+
+  broadcast(message: any) {
+    this.clients.forEach((client) => {
+      if (client.socket.readyState === WebSocket.OPEN) {
+        client.socket.send(JSON.stringify(message));
+      }
+    });
+  }
+}
+
+export const wsManager = new WebSocketManager();
+
+// ════════════════════════════════════════════════════════════════════════════
+// SETUP WEBSOCKET
+// ════════════════════════════════════════════════════════════════════════════
+
+export async function setupWebSocket(app: FastifyInstance) {
+  app.get('/ws', { websocket: true }, (connection, request) => {
+    const clientId = `client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Add client (userId will be set after authentication)
+    wsManager.addClient(clientId, {
+      socket: connection.socket,
+      userId: 'anonymous',
+    });
 
     // Handle messages
-    socket.on('message', async (data) => {
+    connection.socket.on('message', async (rawMessage) => {
       try {
-        const message = JSON.parse(data.toString());
-        await handleMessage(clientId, message, socket);
-      } catch (error) {
-        logger.error('WebSocket message error:', error);
-        socket.send(JSON.stringify({ type: 'error', message: 'Invalid message format' }));
+        const message = JSON.parse(rawMessage.toString());
+
+        switch (message.type) {
+          case 'auth':
+            // Authenticate and update userId
+            if (message.token) {
+              try {
+                const decoded = app.jwt.verify(message.token) as { userId: string };
+                wsManager.addClient(clientId, {
+                  socket: connection.socket,
+                  userId: decoded.userId,
+                  chatId: message.chatId,
+                });
+                connection.socket.send(JSON.stringify({
+                  type: 'auth:success',
+                  userId: decoded.userId,
+                }));
+              } catch (err) {
+                connection.socket.send(JSON.stringify({
+                  type: 'auth:error',
+                  error: 'Invalid token',
+                }));
+              }
+            }
+            break;
+
+          case 'join:chat':
+            // Join a specific chat room
+            const client = wsManager['clients'].get(clientId);
+            if (client) {
+              client.chatId = message.chatId;
+              connection.socket.send(JSON.stringify({
+                type: 'joined:chat',
+                chatId: message.chatId,
+              }));
+            }
+            break;
+
+          case 'leave:chat':
+            const clientToLeave = wsManager['clients'].get(clientId);
+            if (clientToLeave) {
+              clientToLeave.chatId = undefined;
+              connection.socket.send(JSON.stringify({
+                type: 'left:chat',
+              }));
+            }
+            break;
+
+          case 'typing:start':
+            wsManager.sendToChat(message.chatId, {
+              type: 'typing:start',
+              userId: message.userId,
+              chatId: message.chatId,
+            });
+            break;
+
+          case 'typing:stop':
+            wsManager.sendToChat(message.chatId, {
+              type: 'typing:stop',
+              userId: message.userId,
+              chatId: message.chatId,
+            });
+            break;
+
+          case 'ping':
+            connection.socket.send(JSON.stringify({ type: 'pong' }));
+            break;
+
+          default:
+            logger.warn(`Unknown WebSocket message type: ${message.type}`);
+        }
+      } catch (err) {
+        logger.error('WebSocket message error:', err);
+        connection.socket.send(JSON.stringify({
+          type: 'error',
+          error: 'Invalid message format',
+        }));
       }
     });
 
     // Handle disconnect
-    socket.on('close', () => {
-      clients.delete(clientId);
-      logger.info(`WebSocket client disconnected: ${clientId}`);
+    connection.socket.on('close', () => {
+      wsManager.removeClient(clientId);
     });
 
     // Handle errors
-    socket.on('error', (error) => {
-      logger.error(`WebSocket error for ${clientId}:`, error);
+    connection.socket.on('error', (err) => {
+      logger.error('WebSocket error:', err);
+      wsManager.removeClient(clientId);
     });
 
     // Send welcome message
-    socket.send(JSON.stringify({
+    connection.socket.send(JSON.stringify({
       type: 'connected',
       clientId,
-      timestamp: new Date().toISOString(),
+      message: 'Welcome to AI Arena WebSocket',
     }));
   });
 }
 
-async function handleMessage(clientId: string, message: any, socket: WebSocket) {
-  const { type, payload } = message;
+// ════════════════════════════════════════════════════════════════════════════
+// HELPER FUNCTIONS FOR BROADCASTING
+// ════════════════════════════════════════════════════════════════════════════
 
-  switch (type) {
-    case 'auth':
-      // Authenticate client
-      if (payload?.userId) {
-        clients.set(clientId, { socket, userId: payload.userId });
-        socket.send(JSON.stringify({ type: 'authenticated', userId: payload.userId }));
-      }
-      break;
-
-    case 'join_chat':
-      // Join a chat room
-      const client = clients.get(clientId);
-      if (client && payload?.chatId) {
-        client.chatId = payload.chatId;
-        clients.set(clientId, client);
-        socket.send(JSON.stringify({ type: 'joined_chat', chatId: payload.chatId }));
-      }
-      break;
-
-    case 'leave_chat':
-      // Leave a chat room
-      const leaveClient = clients.get(clientId);
-      if (leaveClient) {
-        delete leaveClient.chatId;
-        clients.set(clientId, leaveClient);
-        socket.send(JSON.stringify({ type: 'left_chat' }));
-      }
-      break;
-
-    case 'typing':
-      // Broadcast typing indicator
-      broadcastToChat(payload.chatId, {
-        type: 'user_typing',
-        userId: payload.userId,
-        chatId: payload.chatId,
-      }, clientId);
-      break;
-
-    case 'ping':
-      socket.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
-      break;
-
-    default:
-      socket.send(JSON.stringify({ type: 'error', message: 'Unknown message type' }));
-  }
-}
-
-// Broadcast message to all clients in a chat
-function broadcastToChat(chatId: string, message: any, excludeClientId?: string) {
-  for (const [id, client] of clients) {
-    if (client.chatId === chatId && id !== excludeClientId) {
-      client.socket.send(JSON.stringify(message));
-    }
-  }
-}
-
-// Broadcast message to a specific user
-export function broadcastToUser(userId: string, message: any) {
-  for (const [_, client] of clients) {
-    if (client.userId === userId) {
-      client.socket.send(JSON.stringify(message));
-    }
-  }
-}
-
-// Broadcast arena progress
-export function broadcastArenaProgress(chatId: string, progress: {
-  stage: string;
-  percentage: number;
-  currentModel?: string;
-  message?: string;
-}) {
-  broadcastToChat(chatId, {
-    type: 'arena_progress',
-    ...progress,
-  });
-}
-
-// Broadcast new message
-export function broadcastNewMessage(chatId: string, message: any) {
-  broadcastToChat(chatId, {
-    type: 'new_message',
+export function notifyNewMessage(chatId: string, message: any) {
+  wsManager.sendToChat(chatId, {
+    type: 'message:new',
+    chatId,
     message,
   });
 }
 
-// Generate client ID
-function generateClientId(): string {
-  return `client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+export function notifyTyping(chatId: string, modelId: string, isTyping: boolean) {
+  wsManager.sendToChat(chatId, {
+    type: isTyping ? 'typing:start' : 'typing:stop',
+    chatId,
+    modelId,
+  });
+}
+
+export function notifyProgress(chatId: string, progress: number, status: string) {
+  wsManager.sendToChat(chatId, {
+    type: 'progress:update',
+    chatId,
+    progress,
+    status,
+  });
+}
+
+export function notifyRuleProposed(userId: string, rule: any) {
+  wsManager.sendToUser(userId, {
+    type: 'rule:proposed',
+    rule,
+  });
 }

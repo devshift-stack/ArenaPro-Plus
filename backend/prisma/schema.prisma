@@ -1,137 +1,89 @@
-// AI Arena Database Schema
-// PostgreSQL with pgvector extension for embeddings
+// ════════════════════════════════════════════════════════════════════════════
+// AI ARENA - PRISMA SCHEMA
+// ════════════════════════════════════════════════════════════════════════════
 
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["postgresqlExtensions"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider   = "postgresql"
-  url        = env("DATABASE_URL")
-  extensions = [pgvector(map: "vector")]
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
-// ==================== USER MANAGEMENT ====================
+// ════════════════════════════════════════════════════════════════════════════
+// USER & AUTH
+// ════════════════════════════════════════════════════════════════════════════
 
 model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  passwordHash  String
-  name          String
-  avatar        String?
-  role          UserRole  @default(USER)
-  isActive      Boolean   @default(true)
-  emailVerified Boolean   @default(false)
-  
-  // Two-Factor Auth
-  twoFactorEnabled Boolean @default(false)
-  twoFactorSecret  String?
-  
-  // Timestamps
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  lastLoginAt   DateTime?
-  
-  // Encryption key for user's data
-  encryptionKeyId String?
-  
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  avatar    String?
+  role      UserRole @default(USER)
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  ownedTeams     Team[]           @relation("TeamOwner")
-  teamMembers    TeamMember[]
-  chats          Chat[]
-  memories       Memory[]
-  knowledgeEntries KnowledgeEntry[]
-  apiKeys        ApiKey[]
-  sessions       Session[]
-  prompts        Prompt[]
-  files          File[]
-  integrations   Integration[]
-  learningEvents LearningEvent[]
-  
+  chats             Chat[]
+  messages          Message[]
+  teams             TeamMember[]
+  ownedTeams        Team[]              @relation("TeamOwner")
+  memories          Memory[]
+  memorySettings    MemorySettings?
+  knowledgeEntries  KnowledgeEntry[]
+  verifications     KnowledgeVerification[]
+  prompts           Prompt[]
+  integrations      Integration[]
+  learningEvents    LearningEvent[]
+  approvedRules     ActiveRule[]
+
   @@index([email])
-  @@map("users")
 }
 
 enum UserRole {
-  ADMIN
   USER
-  GUEST
+  ADMIN
 }
 
-model Session {
-  id           String   @id @default(uuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  token        String   @unique
-  refreshToken String   @unique
-  expiresAt    DateTime
-  createdAt    DateTime @default(now())
-  userAgent    String?
-  ipAddress    String?
-  
-  @@index([userId])
-  @@index([token])
-  @@map("sessions")
-}
-
-model ApiKey {
-  id          String   @id @default(uuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name        String
-  keyHash     String   @unique
-  prefix      String   // First 8 chars for identification
-  permissions String[] // Array of permission strings
-  lastUsedAt  DateTime?
-  expiresAt   DateTime?
-  createdAt   DateTime @default(now())
-  
-  @@index([userId])
-  @@index([keyHash])
-  @@map("api_keys")
-}
-
-// ==================== TEAM MANAGEMENT ====================
+// ════════════════════════════════════════════════════════════════════════════
+// TEAMS
+// ════════════════════════════════════════════════════════════════════════════
 
 model Team {
-  id          String   @id @default(uuid())
+  id          String   @id @default(cuid())
   name        String
   description String?
-  avatar      String?
-  ownerId     String
-  owner       User     @relation("TeamOwner", fields: [ownerId], references: [id])
-  
-  // Settings
   settings    Json     @default("{}")
-  
-  // Timestamps
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
+
   // Relations
-  members     TeamMember[]
-  chats       Chat[]
-  memories    Memory[]
+  ownerId          String
+  owner            User               @relation("TeamOwner", fields: [ownerId], references: [id])
+  members          TeamMember[]
+  chats            Chat[]
   knowledgeEntries KnowledgeEntry[]
-  
+  prompts          Prompt[]
+
   @@index([ownerId])
-  @@map("teams")
 }
 
 model TeamMember {
-  id        String         @id @default(uuid())
-  teamId    String
-  team      Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String         @id @default(cuid())
   role      TeamMemberRole @default(MEMBER)
-  joinedAt  DateTime       @default(now())
-  
+  createdAt DateTime       @default(now())
+
+  teamId String
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@unique([teamId, userId])
   @@index([teamId])
   @@index([userId])
-  @@map("team_members")
 }
 
 enum TeamMemberRole {
@@ -140,36 +92,30 @@ enum TeamMemberRole {
   MEMBER
 }
 
-// ==================== CHAT & CONVERSATIONS ====================
+// ════════════════════════════════════════════════════════════════════════════
+// CHATS & MESSAGES
+// ════════════════════════════════════════════════════════════════════════════
 
 model Chat {
-  id          String     @id @default(uuid())
-  title       String
-  userId      String
-  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  teamId      String?
-  team        Team?      @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  
-  // Arena Configuration
-  arenaMode   ArenaMode  @default(AUTO_SELECT)
-  modelIds    String[]   // Selected model IDs
-  
-  // Status
-  status      ChatStatus @default(ACTIVE)
-  isArchived  Boolean    @default(false)
-  
-  // Timestamps
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  
+  id             String    @id @default(cuid())
+  title          String    @default("New Chat")
+  mode           ArenaMode @default(AUTO_SELECT)
+  selectedModels String[]  @default([])
+  metadata       Json      @default("{}")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
   // Relations
-  messages    Message[]
-  files       File[]
-  
+  userId   String
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId   String?
+  team     Team?     @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  messages Message[]
+  memories Memory[]
+
   @@index([userId])
   @@index([teamId])
-  @@index([status])
-  @@map("chats")
+  @@index([updatedAt])
 }
 
 enum ArenaMode {
@@ -180,635 +126,249 @@ enum ArenaMode {
   TESTER
 }
 
-enum ChatStatus {
-  ACTIVE
-  COMPLETED
-  ARCHIVED
-}
-
 model Message {
-  id          String      @id @default(uuid())
-  chatId      String
-  chat        Chat        @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  
-  // Content
+  id          String      @id @default(cuid())
   role        MessageRole
   content     String
-  
-  // Model info (for AI messages)
   modelId     String?
-  modelName   String?
-  
-  // Arena metadata
+  tokens      Int?
+  cost        Float?
   metadata    Json        @default("{}")
-  // Stores: taskId, subtaskId, confidence, processingTime, etc.
-  
-  // Token usage
-  promptTokens     Int?
-  completionTokens Int?
-  totalTokens      Int?
-  
-  // Timestamps
+  attachments String[]    @default([])
   createdAt   DateTime    @default(now())
-  
+
   // Relations
-  subTasks    SubTask[]
-  learningEvents LearningEvent[]
-  
+  chatId String
+  chat   Chat    @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
   @@index([chatId])
   @@index([createdAt])
-  @@map("messages")
 }
 
 enum MessageRole {
   USER
   ASSISTANT
   SYSTEM
-  ORCHESTRATOR
 }
 
-// For Divide & Conquer and Project modes
-model SubTask {
-  id          String        @id @default(uuid())
-  messageId   String
-  message     Message       @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  
-  // Task definition
-  title       String
-  description String
-  type        SubTaskType
-  
-  // Assignment
-  assignedModelId String?
-  
-  // Status
-  status      SubTaskStatus @default(PENDING)
-  result      String?
-  error       String?
-  
-  // Metrics
-  startedAt   DateTime?
-  completedAt DateTime?
-  
-  // Order
-  sequence    Int           @default(0)
-  
-  @@index([messageId])
-  @@map("sub_tasks")
-}
-
-enum SubTaskType {
-  CODE
-  WRITING
-  RESEARCH
-  ANALYSIS
-  CREATIVE
-  REVIEW
-  TEST
-}
-
-enum SubTaskStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-  FAILED
-  SKIPPED
-}
-
-// ==================== MEMORY SYSTEM ====================
+// ════════════════════════════════════════════════════════════════════════════
+// MEMORY SYSTEM
+// ════════════════════════════════════════════════════════════════════════════
 
 model Memory {
-  id          String      @id @default(uuid())
-  
-  // Scope
-  scope       MemoryScope
-  userId      String?
-  user        User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  teamId      String?
-  team        Team?       @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  
-  // Content
-  type        MemoryType
-  content     String
-  contentEncrypted Bytes?  // AES-256-GCM encrypted content
-  
-  // Vector embedding for semantic search
-  embedding   Unsupported("vector(1536)")?
-  
-  // Source
-  sourceConversationId String?
-  sourceModelId       String?
-  
-  // Metadata
-  importance  Float       @default(0.5) // 0-1
-  accessCount Int         @default(0)
-  
-  // Timestamps
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  lastAccessedAt DateTime?
-  
-  // Encryption info
-  encryptionIV String?
-  
-  @@index([userId])
-  @@index([teamId])
-  @@index([scope])
-  @@index([type])
-  @@map("memories")
-}
+  id           String     @id @default(cuid())
+  type         MemoryType
+  content      String     // Encrypted
+  embedding    Float[]    // Vector for similarity search
+  importance   Float      @default(0.5)
+  accessCount  Int        @default(0)
+  lastAccessed DateTime?
+  metadata     Json       @default("{}")
+  expiresAt    DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
-enum MemoryScope {
-  USER
-  TEAM
-  GLOBAL
+  // Relations
+  userId String
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chatId String?
+  chat   Chat?   @relation(fields: [chatId], references: [id], onDelete: SetNull)
+
+  @@index([userId, type])
+  @@index([userId, createdAt])
 }
 
 enum MemoryType {
-  CONVERSATION
-  PREFERENCE
-  FACT
-  CONTEXT
-  PROJECT
+  SHORT_TERM
+  LONG_TERM
+  SEMANTIC
+  EPISODIC
 }
 
-// ==================== KNOWLEDGE BASE ====================
+model MemorySettings {
+  id              String   @id @default(cuid())
+  enabled         Boolean  @default(true)
+  retentionDays   Int      @default(365)
+  autoExtract     Boolean  @default(true)
+  excludePatterns String[] @default([])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// KNOWLEDGE BASE
+// ════════════════════════════════════════════════════════════════════════════
 
 model KnowledgeEntry {
-  id          String         @id @default(uuid())
-  
-  // Content
-  title       String
-  content     String
-  category    String[]
-  
-  // Source
-  userId      String?
-  user        User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
-  teamId      String?
-  team        Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  sourceConversationId String?
-  sourceModelId       String?
-  
-  // Status
-  status      KBStatus       @default(BETA)
-  
-  // Vector embedding
-  embedding   Unsupported("vector(1536)")?
-  
-  // Metadata
-  reliability Float          @default(0.0)
-  accessCount Int            @default(0)
-  
-  // Timestamps
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  lastAccessedAt DateTime?
-  
+  id        String              @id @default(cuid())
+  content   String
+  source    String?
+  tags      String[]            @default([])
+  status    KnowledgeStatus     @default(BETA)
+  embedding Float[]
+  metadata  Json                @default("{}")
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
   // Relations
-  verifications KBVerification[]
-  
-  @@index([status])
+  userId        String
+  user          User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId        String?
+  team          Team?                   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  verifications KnowledgeVerification[]
+
   @@index([userId])
-  @@index([teamId])
-  @@map("knowledge_entries")
+  @@index([status])
+  @@index([tags])
 }
 
-enum KBStatus {
-  BETA
+enum KnowledgeStatus {
   PENDING
+  BETA
   VERIFIED
-  REJECTED
 }
 
-model KBVerification {
-  id           String         @id @default(uuid())
+model KnowledgeVerification {
+  id         String   @id @default(cuid())
+  isCorrect  Boolean  @default(true)
+  notes      String?
+  modelId    String?
+  createdAt  DateTime @default(now())
+
   entryId      String
   entry        KnowledgeEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  
-  // Verification details
-  modelId      String
-  verified     Boolean
-  confidence   Float          // 0-1
-  notes        String?
-  
-  // Timestamp
-  createdAt    DateTime       @default(now())
-  
+  verifiedById String
+  verifiedBy   User           @relation(fields: [verifiedById], references: [id], onDelete: Cascade)
+
   @@index([entryId])
-  @@map("kb_verifications")
 }
 
-// ==================== PROMPT LIBRARY ====================
+// ════════════════════════════════════════════════════════════════════════════
+// PROMPTS
+// ════════════════════════════════════════════════════════════════════════════
 
 model Prompt {
-  id          String       @id @default(uuid())
-  
-  // Content
-  name        String
-  description String?
-  template    String
-  category    String[]
-  variables   Json         @default("[]") // Array of variable definitions
-  
-  // Author
-  userId      String?
-  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
-  isSystem    Boolean      @default(false) // System-provided prompts
-  
-  // Metrics
-  usageCount  Int          @default(0)
-  successRate Float        @default(0.0)
-  avgRating   Float        @default(0.0)
-  
-  // Version control
-  version     Int          @default(1)
-  
-  // Best practices and examples
-  bestPractices String[]
-  examples    Json         @default("[]")
-  
-  // Timestamps
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  category  String   @default("general")
+  tags      String[] @default([])
+  isPublic  Boolean  @default(false)
+  usageCount Int     @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  variants    PromptVariant[]
-  
-  @@index([category])
+  userId String
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId String?
+  team   Team?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
   @@index([userId])
-  @@map("prompts")
-}
-
-model PromptVariant {
-  id          String   @id @default(uuid())
-  promptId    String
-  prompt      Prompt   @relation(fields: [promptId], references: [id], onDelete: Cascade)
-  
-  // Variant content
-  template    String
-  
-  // A/B test results
-  usageCount  Int      @default(0)
-  successRate Float    @default(0.0)
-  
-  // Status
-  isActive    Boolean  @default(true)
-  
-  // Timestamps
-  createdAt   DateTime @default(now())
-  
-  @@index([promptId])
-  @@map("prompt_variants")
-}
-
-// ==================== RULEBOOK (GESETZBUCH) ====================
-
-model Rule {
-  id          String      @id @default(uuid())
-  
-  // Content
-  name        String
-  description String
-  rule        String      // The actual rule text
-  category    RuleCategory
-  
-  // Priority (higher = more important)
-  priority    Int         @default(100)
-  
-  // Scope
-  isGlobal    Boolean     @default(true)
-  teamId      String?     // If not global, applies to specific team
-  
-  // Status
-  isActive    Boolean     @default(true)
-  
-  // Timestamps
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  
   @@index([category])
-  @@index([isActive])
-  @@map("rules")
+  @@index([isPublic])
 }
 
-enum RuleCategory {
-  CORE
-  BEHAVIOR
-  TASK
-  SAFETY
-  QUALITY
-}
-
-// ==================== FILE STORAGE ====================
-
-model File {
-  id          String    @id @default(uuid())
-  
-  // Ownership
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  chatId      String?
-  chat        Chat?     @relation(fields: [chatId], references: [id], onDelete: SetNull)
-  
-  // File info
-  name        String
-  originalName String
-  mimeType    String
-  size        Int       // bytes
-  
-  // Storage
-  storageKey  String    // S3/MinIO key
-  storageProvider String @default("minio")
-  
-  // Status
-  status      FileStatus @default(UPLOADED)
-  
-  // Timestamps
-  createdAt   DateTime  @default(now())
-  expiresAt   DateTime?
-  
-  @@index([userId])
-  @@index([chatId])
-  @@map("files")
-}
-
-enum FileStatus {
-  UPLOADING
-  UPLOADED
-  PROCESSING
-  READY
-  ERROR
-  DELETED
-}
-
-// ==================== INTEGRATIONS ====================
+// ════════════════════════════════════════════════════════════════════════════
+// INTEGRATIONS
+// ════════════════════════════════════════════════════════════════════════════
 
 model Integration {
-  id          String           @id @default(uuid())
-  userId      String
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  // Integration type
-  provider    IntegrationProvider
-  
-  // Credentials (encrypted)
-  accessToken     String?
-  refreshToken    String?
-  tokenExpiresAt  DateTime?
-  
-  // Provider-specific data
-  providerData    Json         @default("{}")
-  
-  // Status
-  isConnected Boolean          @default(true)
-  lastSyncAt  DateTime?
-  
-  // Timestamps
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  
-  @@unique([userId, provider])
+  id           String   @id @default(cuid())
+  type         String   // google-drive, github, etc.
+  accessToken  String
+  refreshToken String?
+  metadata     Json     @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
   @@index([userId])
-  @@map("integrations")
 }
 
-enum IntegrationProvider {
-  GOOGLE_DRIVE
-  GITHUB
-  DROPBOX
-  NOTION
-}
+// ════════════════════════════════════════════════════════════════════════════
+// LEARNING SYSTEM
+// ════════════════════════════════════════════════════════════════════════════
 
-// ==================== MODELS REGISTRY ====================
-
-model AIModel {
-  id              String   @id @default(uuid())
-  
-  // OpenRouter ID
-  openRouterId    String   @unique
-  
-  // Display info
-  name            String
-  provider        String
-  description     String?
-  
-  // Capabilities
-  capabilities    String[] // code, writing, reasoning, etc.
-  contextLength   Int
-  
-  // Pricing (per 1M tokens)
-  inputPrice      Float
-  outputPrice     Float
-  
-  // Performance scores (0-100)
-  speedScore      Int      @default(50)
-  qualityScore    Int      @default(50)
-  
-  // Specialty areas
-  specialties     Json     @default("{}") // { code: 90, writing: 80, ... }
-  
-  // Status
-  isActive        Boolean  @default(true)
-  
-  // Timestamps
-  updatedAt       DateTime @updatedAt
-  
-  @@index([provider])
-  @@index([isActive])
-  @@map("ai_models")
-}
-
-// ==================== ANALYTICS ====================
-
-model UsageLog {
-  id          String   @id @default(uuid())
-  
-  // User/Team
-  userId      String?
-  teamId      String?
-  
-  // Usage details
-  modelId     String
-  chatId      String?
-  arenaMode   ArenaMode?
-  
-  // Tokens
-  promptTokens     Int
-  completionTokens Int
-  totalTokens      Int
-  
-  // Cost
-  cost        Float
-  
-  // Timestamp
-  createdAt   DateTime @default(now())
-  
-  @@index([userId])
-  @@index([teamId])
-  @@index([createdAt])
-  @@map("usage_logs")
-}
-
-// ==================== LEARNING SYSTEM (Selbstlernendes Regel-System) ====================
-
-// Erfasst alle Lern-Ereignisse (Fehler, Korrekturen, negatives Feedback)
 model LearningEvent {
-  id               String    @id @default(uuid())
-  
-  // Referenzen
-  chatId           String
-  messageId        String
-  message          Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  modelId          String
-  userId           String
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  // Event Details
-  eventType        LearningEventType
-  originalContent  String
-  correctedContent String?
-  errorCategory    String?
-  errorDescription String?
-  
-  // Metadata
-  metadata         Json      @default("{}")
-  
-  // Timestamps
-  createdAt        DateTime  @default(now())
-  
-  @@index([errorCategory])
+  id        String            @id @default(cuid())
+  type      LearningEventType
+  modelId   String
+  chatId    String?
+  content   String
+  metadata  Json              @default("{}")
+  createdAt DateTime          @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([type])
   @@index([modelId])
-  @@index([userId])
   @@index([createdAt])
-  @@map("learning_events")
 }
 
 enum LearningEventType {
   ERROR
   CORRECTION
-  NEGATIVE_FEEDBACK
-  REGENERATION
+  FEEDBACK
+  IMPROVEMENT
 }
 
-// Vorgeschlagene Regeln (warten auf Admin-Bestätigung)
 model ProposedRule {
-  id               String           @id @default(uuid())
-  
-  // Regel-Definition
-  title            String
-  description      String
-  ruleType         ProposedRuleType
-  priority         RulePriority     @default(MEDIUM)
-  scope            RuleScope        @default(GLOBAL)
-  
-  // Targets
-  targetModels     String[]         // Array von Model-IDs
-  condition        String?          // Wann die Regel gilt
-  action           String           // Die konkrete Anweisung
-  
-  // Beispiele
-  examples         Json             @default("[]") // [{bad: "...", good: "..."}]
-  
-  // Quellen
-  sourceEvents     String[]         // IDs der Lern-Events
-  
-  // Metriken
-  confidence       Float            @default(0)
-  occurrences      Int              @default(0)
-  
-  // Status
-  status           ProposedRuleStatus @default(PROPOSED)
-  
-  // Entscheidung
-  decidedAt        DateTime?
-  decidedBy        String?
-  rejectionReason  String?
-  
-  // Timestamps
-  proposedAt       DateTime         @default(now())
-  
-  // Relations
-  activeRules      ActiveRule[]
-  
+  id              String             @id @default(cuid())
+  title           String
+  description     String
+  instruction     String
+  category        String
+  severity        RuleSeverity       @default(MEDIUM)
+  examples        Json               @default("[]")
+  confidence      Float              @default(0.5)
+  status          ProposedRuleStatus @default(PENDING)
+  rejectionReason String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
   @@index([status])
-  @@index([priority])
-  @@index([ruleType])
-  @@map("proposed_rules")
+  @@index([createdAt])
 }
 
-enum ProposedRuleType {
-  INSTRUCTION
-  CONSTRAINT
-  PREFERENCE
-  FORMAT
-  BEHAVIOR
+enum ProposedRuleStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
-enum RulePriority {
+enum RuleSeverity {
   LOW
   MEDIUM
   HIGH
   CRITICAL
 }
 
-enum RuleScope {
-  GLOBAL
-  MODEL
-  USER
-  TEAM
-}
-
-enum ProposedRuleStatus {
-  PROPOSED
-  APPROVED
-  REJECTED
-  DEPRECATED
-}
-
-// Aktive Regeln (vom Admin genehmigt)
 model ActiveRule {
-  id             String       @id @default(uuid())
-  
-  // Referenz zur Regel
-  ruleId         String
-  rule           ProposedRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
-  
-  // Aktivierung
-  activatedAt    DateTime     @default(now())
-  activatedBy    String
-  
-  // Version
-  version        Int          @default(1)
-  
-  // Status
-  isActive       Boolean      @default(true)
-  
-  @@index([isActive])
-  @@index([ruleId])
-  @@map("active_rules")
-}
+  id          String       @id @default(cuid())
+  title       String
+  description String
+  instruction String
+  category    String
+  severity    RuleSeverity @default(MEDIUM)
+  examples    Json         @default("[]")
+  isActive    Boolean      @default(true)
+  usageCount  Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
-// Error Patterns für schnellere Erkennung
-model ErrorPattern {
-  id             String    @id @default(uuid())
-  
-  // Pattern
-  pattern        String
-  category       String
-  
-  // Statistiken
-  count          Int       @default(0)
-  models         String[]
-  
-  // Vorgeschlagene Lösung
-  suggestedFix   String?
-  
-  // Timestamps
-  lastSeen       DateTime  @default(now())
-  createdAt      DateTime  @default(now())
-  
+  approvedById String
+  approvedBy   User   @relation(fields: [approvedById], references: [id])
+
+  @@index([isActive])
   @@index([category])
-  @@index([count])
-  @@map("error_patterns")
 }
