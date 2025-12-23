@@ -16,15 +16,17 @@ datasource db {
 // ════════════════════════════════════════════════════════════════════════════
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String
-  avatar    String?
-  role      UserRole @default(USER)
-  settings  Json     @default("{}")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  email      String   @unique
+  password   String
+  name       String
+  avatar     String?
+  role       UserRole @default(USER)
+  provider   String?  // OAuth provider: 'google', 'github', etc.
+  providerId String?  // OAuth provider user ID
+  settings   Json     @default("{}")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   // Relations
   chats             Chat[]
