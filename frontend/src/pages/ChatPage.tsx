@@ -36,6 +36,8 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { ModelSelector } from '@/components/arena/ModelSelector';
 import { useArena } from '@/hooks/useArena';
 import { useChat } from '@/hooks/useChat';
 
@@ -102,10 +104,11 @@ export function ChatPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
+  const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
+
   const { messages, sendMessage, isLoading, isSending } = useChat({ chatId });
-  const { models } = useArena();
+  const { models, getAccessibleModels } = useArena();
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -249,27 +252,50 @@ export function ChatPage() {
         <div className="max-w-4xl mx-auto">
           {/* Model Selection (for non-auto modes) */}
           {selectedMode !== 'AUTO_SELECT' && (
-            <div className="flex flex-wrap gap-2 mb-3">
-              {models?.slice(0, 6).map(model => (
-                <Badge
-                  key={model.id}
-                  variant={selectedModels.includes(model.id) ? 'default' : 'outline'}
-                  className={`cursor-pointer transition-all ${
-                    selectedModels.includes(model.id) 
-                      ? 'bg-cyan-600 hover:bg-cyan-700' 
-                      : 'hover:bg-slate-800'
-                  }`}
-                  onClick={() => {
-                    setSelectedModels(prev => 
-                      prev.includes(model.id)
-                        ? prev.filter(id => id !== model.id)
-                        : [...prev, model.id]
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              {/* Selected models display */}
+              {selectedModels.length > 0 ? (
+                <>
+                  {selectedModels.map(modelId => {
+                    const model = models?.find(m => m.id === modelId);
+                    if (!model) return null;
+                    return (
+                      <Badge
+                        key={model.id}
+                        variant="default"
+                        className="bg-cyan-600 hover:bg-cyan-700 cursor-pointer"
+                        onClick={() => {
+                          setSelectedModels(prev => prev.filter(id => id !== model.id));
+                        }}
+                      >
+                        {model.name} ×
+                      </Badge>
                     );
-                  }}
-                >
-                  {model.name}
-                </Badge>
-              ))}
+                  })}
+                </>
+              ) : (
+                <span className="text-sm text-slate-500">Keine Modelle ausgewählt</span>
+              )}
+
+              {/* Model Selector Dialog */}
+              <Dialog open={modelSelectorOpen} onOpenChange={setModelSelectorOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="border-slate-700">
+                    Modelle wählen
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto bg-slate-900 border-slate-800">
+                  <DialogHeader>
+                    <DialogTitle className="text-white">Modelle auswählen</DialogTitle>
+                  </DialogHeader>
+                  <ModelSelector
+                    selectedModels={selectedModels}
+                    onSelectionChange={setSelectedModels}
+                    maxSelection={4}
+                    mode="multi"
+                  />
+                </DialogContent>
+              </Dialog>
             </div>
           )}
 

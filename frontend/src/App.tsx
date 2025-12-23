@@ -16,6 +16,7 @@ import { KnowledgeBasePage } from './pages/KnowledgeBasePage';
 import { PromptsPage } from './pages/PromptsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { HandbookPage } from './pages/HandbookPage';
+import { AdminModelAccessPage } from './pages/AdminModelAccessPage';
 
 // Layouts
 import { MainLayout } from './components/layouts/MainLayout';
@@ -83,6 +84,7 @@ function AppRoutes() {
         <Route path="prompts" element={<PromptsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="handbook" element={<HandbookPage />} />
+        <Route path="admin/models" element={<AdminModelAccessPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
