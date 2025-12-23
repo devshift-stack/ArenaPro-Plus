@@ -1,335 +1,274 @@
-// ═══════════════════════════════════════════════════════════════════════════════
-// MEMORY API ROUTES
-// REST Endpoints für das Memory System
-// ═══════════════════════════════════════════════════════════════════════════════
-
-import { FastifyInstance, FastifyRequest } from 'fastify';
-import { memoryService } from '../services/memory.js';
-import { memorySettingsService } from '../services/memorySettings.js';
-import { prisma } from '../utils/prisma.js';
+import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { z } from 'zod';
+import prisma from '../utils/prisma.js';
 import { logger } from '../utils/logger.js';
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// TYPES
-// ═══════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════════
+// SCHEMAS
+// ════════════════════════════════════════════════════════════════════════════
 
-interface AuthenticatedRequest extends FastifyRequest {
-  user: {
-    userId: string;
-    email: string;
-  };
-}
+const recallSchema = z.object({
+  query: z.string().min(1),
+  limit: z.number().optional().default(10),
+  types: z.array(z.string()).optional(),
+});
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ROUTES
-// ═══════════════════════════════════════════════════════════════════════════════
+const updateSettingsSchema = z.object({
+  enabled: z.boolean().optional(),
+  retentionDays: z.number().optional(),
+  autoExtract: z.boolean().optional(),
+  excludePatterns: z.array(z.string()).optional(),
+});
 
-export async function memoryRoutes(fastify: FastifyInstance) {
+// ════════════════════════════════════════════════════════════════════════════
+// MEMORY ROUTES
+// ════════════════════════════════════════════════════════════════════════════
+
+export async function memoryRoutes(app: FastifyInstance) {
+  app.addHook('preHandler', app.authenticate);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // GET ALL MEMORIES
+  // ══════════════════════════════════════════════════════════════════════════
   
-  // ─────────────────────────────────────────────────────────────────────────────
-  // GET /api/memory - Alle Memories abrufen
-  // ─────────────────────────────────────────────────────────────────────────────
-  
-  fastify.get<{
-    Querystring: { type?: string; limit?: string; offset?: string }
-  }>('/memory', {
-    preHandler: [fastify.authenticate],
-  }, async (request, reply) => {
-    const req = request as AuthenticatedRequest;
-    const { userId } = req.user;
-    const { type, limit = '50', offset = '0' } = request.query;
-    
+  app.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const whereClause = type 
-        ? `WHERE user_id = '${userId}' AND type = '${type}'`
-        : `WHERE user_id = '${userId}'`;
-      
-      const memories = await prisma.$queryRawUnsafe(`
-        SELECT id, type, content, importance, access_count, created_at, last_accessed_at
-        FROM memories
-        ${whereClause}
-        ORDER BY created_at DESC
-        LIMIT ${parseInt(limit)}
-        OFFSET ${parseInt(offset)}
-      `);
-      
-      return { memories };
+      const { userId } = request.user as { userId: string };
+      const { type, limit = '50' } = request.query as { type?: string; limit?: string };
+
+      const memories = await prisma.memory.findMany({
+        where: {
+          userId,
+          ...(type ? { type: type as any } : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+        take: parseInt(limit),
+      });
+
+      return reply.send({ memories });
     } catch (error) {
-      logger.error('Failed to get memories:', error);
+      logger.error('Get memories error:', error);
       return reply.status(500).send({ error: 'Failed to get memories' });
     }
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SEMANTIC RECALL
+  // ══════════════════════════════════════════════════════════════════════════
   
-  // ─────────────────────────────────────────────────────────────────────────────
-  // POST /api/memory/recall - Semantische Suche
-  // ─────────────────────────────────────────────────────────────────────────────
-  
-  fastify.post<{
-    Body: {
-      query: string;
-      types?: string[];
-      limit?: number;
-      minSimilarity?: number;
-    }
-  }>('/memory/recall', {
-    preHandler: [fastify.authenticate],
-    schema: {
-      body: {
-        type: 'object',
-        required: ['query'],
-        properties: {
-          query: { type: 'string', minLength: 1 },
-          types: { type: 'array', items: { type: 'string' } },
-          limit: { type: 'number', minimum: 1, maximum: 100, default: 10 },
-          minSimilarity: { type: 'number', minimum: 0, maximum: 1, default: 0.7 },
-        }
-      }
-    }
-  }, async (request, reply) => {
-    const req = request as AuthenticatedRequest;
-    const { userId } = req.user;
-    const { query, types, limit = 10, minSimilarity = 0.7 } = request.body;
-    
+  app.post('/recall', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const memories = await memoryService.recall({
-        userId,
-        query,
-        types,
-        limit,
-        minSimilarity,
+      const { userId } = request.user as { userId: string };
+      const body = recallSchema.parse(request.body);
+
+      // TODO: Implement vector similarity search with pgvector
+      // For now, simple text search
+      const memories = await prisma.memory.findMany({
+        where: {
+          userId,
+          content: {
+            contains: body.query,
+            mode: 'insensitive',
+          },
+          ...(body.types ? { type: { in: body.types as any[] } } : {}),
+        },
+        orderBy: { importance: 'desc' },
+        take: body.limit,
       });
-      
-      return { memories };
+
+      // Update access count
+      const memoryIds = memories.map(m => m.id);
+      await prisma.memory.updateMany({
+        where: { id: { in: memoryIds } },
+        data: {
+          accessCount: { increment: 1 },
+          lastAccessed: new Date(),
+        },
+      });
+
+      return reply.send({ memories });
     } catch (error) {
-      logger.error('Failed to recall memories:', error);
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: error.errors });
+      }
+      logger.error('Recall error:', error);
       return reply.status(500).send({ error: 'Failed to recall memories' });
     }
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // GET CONTEXT FOR CHAT
+  // ══════════════════════════════════════════════════════════════════════════
   
-  // ─────────────────────────────────────────────────────────────────────────────
-  // GET /api/memory/context/:chatId - Kontext für Chat
-  // ─────────────────────────────────────────────────────────────────────────────
-  
-  fastify.get<{
-    Params: { chatId: string }
-  }>('/memory/context/:chatId', {
-    preHandler: [fastify.authenticate],
-  }, async (request, reply) => {
-    const req = request as AuthenticatedRequest;
-    const { userId } = req.user;
-    const { chatId } = request.params;
-    
+  app.get('/context/:chatId', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      // Letzte User-Nachricht holen
-      const lastMessage = await prisma.$queryRawUnsafe<any[]>(`
-        SELECT content FROM messages
-        WHERE chat_id = '${chatId}' AND role = 'USER'
-        ORDER BY created_at DESC
-        LIMIT 1
-      `);
-      
-      if (!lastMessage || lastMessage.length === 0) {
-        return { context: [] };
-      }
-      
-      const context = await memoryService.getContextForChat(
-        userId,
-        lastMessage[0].content
-      );
-      
-      return { context };
+      const { userId } = request.user as { userId: string };
+      const { chatId } = request.params as { chatId: string };
+
+      // Get chat-specific memories
+      const chatMemories = await prisma.memory.findMany({
+        where: {
+          userId,
+          chatId,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+      });
+
+      // Get user preferences
+      const preferences = await prisma.memory.findMany({
+        where: {
+          userId,
+          type: 'SEMANTIC',
+        },
+        orderBy: { importance: 'desc' },
+        take: 10,
+      });
+
+      // Get recent memories
+      const recent = await prisma.memory.findMany({
+        where: {
+          userId,
+          type: 'SHORT_TERM',
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      });
+
+      return reply.send({
+        context: {
+          chatMemories,
+          preferences,
+          recent,
+        },
+      });
     } catch (error) {
-      logger.error('Failed to get context:', error);
+      logger.error('Get context error:', error);
       return reply.status(500).send({ error: 'Failed to get context' });
     }
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // GET MEMORY SETTINGS
+  // ══════════════════════════════════════════════════════════════════════════
   
-  // ─────────────────────────────────────────────────────────────────────────────
-  // DELETE /api/memory/:id - Einzelnes Memory löschen
-  // ─────────────────────────────────────────────────────────────────────────────
-  
-  fastify.delete<{
-    Params: { id: string }
-  }>('/memory/:id', {
-    preHandler: [fastify.authenticate],
-  }, async (request, reply) => {
-    const req = request as AuthenticatedRequest;
-    const { userId } = req.user;
-    const { id } = request.params;
-    
+  app.get('/settings', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      // Prüfen ob Memory dem User gehört
-      const memory = await prisma.$queryRawUnsafe<any[]>(`
-        SELECT id FROM memories WHERE id = '${id}' AND user_id = '${userId}'
-      `);
-      
-      if (!memory || memory.length === 0) {
-        return reply.status(404).send({ error: 'Memory not found' });
+      const { userId } = request.user as { userId: string };
+
+      let settings = await prisma.memorySettings.findUnique({
+        where: { userId },
+      });
+
+      if (!settings) {
+        // Create default settings
+        settings = await prisma.memorySettings.create({
+          data: {
+            userId,
+            enabled: true,
+            retentionDays: 365,
+            autoExtract: true,
+          },
+        });
       }
-      
-      await prisma.$executeRawUnsafe(`DELETE FROM memories WHERE id = '${id}'`);
-      
-      return { deleted: true };
+
+      return reply.send({ settings });
     } catch (error) {
-      logger.error('Failed to delete memory:', error);
-      return reply.status(500).send({ error: 'Failed to delete memory' });
-    }
-  });
-  
-  // ─────────────────────────────────────────────────────────────────────────────
-  // GET /api/memory/settings - Einstellungen abrufen
-  // ─────────────────────────────────────────────────────────────────────────────
-  
-  fastify.get('/memory/settings', {
-    preHandler: [fastify.authenticate],
-  }, async (request, reply) => {
-    const req = request as AuthenticatedRequest;
-    const { userId } = req.user;
-    
-    try {
-      const settings = await memorySettingsService.getSettings(userId);
-      return { settings };
-    } catch (error) {
-      logger.error('Failed to get settings:', error);
+      logger.error('Get settings error:', error);
       return reply.status(500).send({ error: 'Failed to get settings' });
     }
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // UPDATE MEMORY SETTINGS
+  // ══════════════════════════════════════════════════════════════════════════
   
-  // ─────────────────────────────────────────────────────────────────────────────
-  // PUT /api/memory/settings - Einstellungen aktualisieren
-  // ─────────────────────────────────────────────────────────────────────────────
-  
-  fastify.put<{
-    Body: {
-      enabled?: boolean;
-      conversationMemory?: boolean;
-      factMemory?: boolean;
-      preferenceMemory?: boolean;
-      crossChatMemory?: boolean;
-      retentionDays?: number;
-      maxMemories?: number;
-      autoConsolidate?: boolean;
-      shareWithTeam?: boolean;
-      anonymizeExports?: boolean;
-      excludePatterns?: string[];
-      autoExtract?: boolean;
-      extractionFrequency?: 'per_chat' | 'per_message' | 'manual';
-      minConfidence?: number;
-    }
-  }>('/memory/settings', {
-    preHandler: [fastify.authenticate],
-    schema: {
-      body: {
-        type: 'object',
-        properties: {
-          enabled: { type: 'boolean' },
-          conversationMemory: { type: 'boolean' },
-          factMemory: { type: 'boolean' },
-          preferenceMemory: { type: 'boolean' },
-          crossChatMemory: { type: 'boolean' },
-          retentionDays: { type: 'number', minimum: 1, maximum: 9999 },
-          maxMemories: { type: 'number', minimum: 100, maximum: 10000 },
-          autoConsolidate: { type: 'boolean' },
-          shareWithTeam: { type: 'boolean' },
-          anonymizeExports: { type: 'boolean' },
-          excludePatterns: { type: 'array', items: { type: 'string' } },
-          autoExtract: { type: 'boolean' },
-          extractionFrequency: { 
-            type: 'string', 
-            enum: ['per_chat', 'per_message', 'manual'] 
-          },
-          minConfidence: { type: 'number', minimum: 0, maximum: 1 },
-        }
-      }
-    }
-  }, async (request, reply) => {
-    const req = request as AuthenticatedRequest;
-    const { userId } = req.user;
-    const updates = request.body;
-    
+  app.put('/settings', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const settings = await memorySettingsService.updateSettings(userId, updates);
-      return { settings };
+      const { userId } = request.user as { userId: string };
+      const body = updateSettingsSchema.parse(request.body);
+
+      const settings = await prisma.memorySettings.upsert({
+        where: { userId },
+        create: {
+          userId,
+          ...body,
+        },
+        update: body,
+      });
+
+      return reply.send({ settings });
     } catch (error) {
-      logger.error('Failed to update settings:', error);
-      
-      if (error instanceof Error) {
-        return reply.status(400).send({ error: error.message });
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: error.errors });
       }
-      
+      logger.error('Update settings error:', error);
       return reply.status(500).send({ error: 'Failed to update settings' });
     }
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // EXPORT MEMORIES
+  // ══════════════════════════════════════════════════════════════════════════
   
-  // ─────────────────────────────────────────────────────────────────────────────
-  // POST /api/memory/export - Memories exportieren
-  // ─────────────────────────────────────────────────────────────────────────────
-  
-  fastify.post('/memory/export', {
-    preHandler: [fastify.authenticate],
-  }, async (request, reply) => {
-    const req = request as AuthenticatedRequest;
-    const { userId } = req.user;
-    
+  app.post('/export', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const exportData = await memorySettingsService.exportMemories(userId);
-      
-      reply.header('Content-Type', 'application/json');
-      reply.header('Content-Disposition', 'attachment; filename=memories-export.json');
-      
-      return exportData;
+      const { userId } = request.user as { userId: string };
+
+      const memories = await prisma.memory.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      return reply.send({
+        data: {
+          exportedAt: new Date().toISOString(),
+          totalMemories: memories.length,
+          memories,
+        },
+      });
     } catch (error) {
-      logger.error('Failed to export memories:', error);
+      logger.error('Export error:', error);
       return reply.status(500).send({ error: 'Failed to export memories' });
     }
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // DELETE ALL MEMORIES
+  // ══════════════════════════════════════════════════════════════════════════
   
-  // ─────────────────────────────────────────────────────────────────────────────
-  // DELETE /api/memory/all - Alle Memories löschen
-  // ─────────────────────────────────────────────────────────────────────────────
-  
-  fastify.delete('/memory/all', {
-    preHandler: [fastify.authenticate],
-  }, async (request, reply) => {
-    const req = request as AuthenticatedRequest;
-    const { userId } = req.user;
-    
+  app.delete('/all', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const result = await memorySettingsService.deleteAllMemories(userId);
-      return result;
+      const { userId } = request.user as { userId: string };
+
+      await prisma.memory.deleteMany({
+        where: { userId },
+      });
+
+      return reply.send({ message: 'All memories deleted' });
     } catch (error) {
-      logger.error('Failed to delete all memories:', error);
+      logger.error('Delete all error:', error);
       return reply.status(500).send({ error: 'Failed to delete memories' });
     }
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // DELETE SINGLE MEMORY
+  // ══════════════════════════════════════════════════════════════════════════
   
-  // ─────────────────────────────────────────────────────────────────────────────
-  // GET /api/memory/stats - Memory Statistiken
-  // ─────────────────────────────────────────────────────────────────────────────
-  
-  fastify.get('/memory/stats', {
-    preHandler: [fastify.authenticate],
-  }, async (request, reply) => {
-    const req = request as AuthenticatedRequest;
-    const { userId } = req.user;
-    
+  app.delete('/:id', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const stats = await prisma.$queryRawUnsafe<any[]>(`
-        SELECT 
-          COUNT(*) as total,
-          COUNT(*) FILTER (WHERE type = 'CONVERSATION') as conversations,
-          COUNT(*) FILTER (WHERE type = 'FACT') as facts,
-          COUNT(*) FILTER (WHERE type = 'PREFERENCE') as preferences,
-          AVG(importance) as avg_importance,
-          MAX(created_at) as latest_memory
-        FROM memories
-        WHERE user_id = '${userId}'
-      `);
-      
-      return { stats: stats[0] };
+      const { userId } = request.user as { userId: string };
+      const { id } = request.params as { id: string };
+
+      await prisma.memory.deleteMany({
+        where: { id, userId },
+      });
+
+      return reply.send({ message: 'Memory deleted' });
     } catch (error) {
-      logger.error('Failed to get stats:', error);
-      return reply.status(500).send({ error: 'Failed to get stats' });
+      logger.error('Delete memory error:', error);
+      return reply.status(500).send({ error: 'Failed to delete memory' });
     }
   });
 }
