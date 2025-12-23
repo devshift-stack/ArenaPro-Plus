@@ -29,18 +29,21 @@ model User {
   updatedAt  DateTime @updatedAt
 
   // Relations
-  chats             Chat[]
-  messages          Message[]
-  teams             TeamMember[]
-  ownedTeams        Team[]              @relation("TeamOwner")
-  memories          Memory[]
-  memorySettings    MemorySettings?
-  knowledgeEntries  KnowledgeEntry[]
-  verifications     KnowledgeVerification[]
-  prompts           Prompt[]
-  integrations      Integration[]
-  learningEvents    LearningEvent[]
-  approvedRules     ActiveRule[]
+  chats               Chat[]
+  messages            Message[]
+  teams               TeamMember[]
+  ownedTeams          Team[]              @relation("TeamOwner")
+  memories            Memory[]
+  memorySettings      MemorySettings?
+  knowledgeEntries    KnowledgeEntry[]
+  verifications       KnowledgeVerification[]
+  prompts             Prompt[]
+  integrations        Integration[]
+  learningEvents      LearningEvent[]
+  approvedRules       ActiveRule[]
+  modelAccessRequests ModelAccessRequest[]
+  modelAccesses       ModelAccess[]
+  approvedRequests    ModelAccessRequest[] @relation("ApprovedBy")
 
   @@index([email])
 }
@@ -373,4 +376,59 @@ model ActiveRule {
 
   @@index([isActive])
   @@index([category])
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MODEL ACCESS SYSTEM
+// Tier-based model access with approval workflow
+// ════════════════════════════════════════════════════════════════════════════
+
+model ModelAccessRequest {
+  id           String             @id @default(cuid())
+  modelId      String             // OpenRouter model ID
+  tier         ModelTier          // standard or premium
+  duration     Int                // Duration in days (1, 3, or 7)
+  reason       String?            // User's reason for request
+  status       AccessRequestStatus @default(PENDING)
+  rejectionNote String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  // Relations
+  userId       String
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  approvedById String?
+  approvedBy   User?   @relation("ApprovedBy", fields: [approvedById], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([tier])
+}
+
+model ModelAccess {
+  id        String    @id @default(cuid())
+  modelId   String    // OpenRouter model ID
+  tier      ModelTier
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+
+  // Relations
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, modelId])
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+enum ModelTier {
+  BASIC
+  STANDARD
+  PREMIUM
+}
+
+enum AccessRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }

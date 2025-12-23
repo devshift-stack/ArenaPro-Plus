@@ -1,6 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/utils/api';
-import type { ArenaMode, Model, Chat } from '@/types';
+import type { ArenaMode, Chat } from '@/types';
+
+interface ModelWithAccess {
+  id: string;
+  name: string;
+  provider: string;
+  tier: 'basic' | 'standard' | 'premium';
+  description: string;
+  contextWindow: number;
+  inputCost: number;
+  outputCost: number;
+  strengths: string[];
+  hasAccess: boolean;
+  accessExpiresAt?: string;
+  requestStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | null;
+}
 
 interface CreateChatParams {
   title?: string;
@@ -16,16 +31,17 @@ interface ChangeModeParams {
 export function useArena() {
   const queryClient = useQueryClient();
 
-  // Fetch available models
+  // Fetch available models with access info
   const {
     data: models = [],
     isLoading: isLoadingModels,
     error: modelsError,
+    refetch: refetchModels,
   } = useQuery({
     queryKey: ['models'],
     queryFn: async () => {
       const response = await api.get('/models');
-      return response.data.models as Model[];
+      return response.data.models as ModelWithAccess[];
     },
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
@@ -102,7 +118,22 @@ export function useArena() {
   };
 
   const getModelsByCapability = (capability: string) => {
-    return models.filter((m) => m.capabilities.includes(capability));
+    return models.filter((m) => m.strengths.some(s =>
+      s.toLowerCase().includes(capability.toLowerCase())
+    ));
+  };
+
+  // Tier-based helper functions
+  const getModelsByTier = (tier: 'basic' | 'standard' | 'premium') => {
+    return models.filter((m) => m.tier === tier);
+  };
+
+  const getAccessibleModels = () => {
+    return models.filter((m) => m.hasAccess);
+  };
+
+  const getLockedModels = () => {
+    return models.filter((m) => !m.hasAccess);
   };
 
   // Arena mode configurations
@@ -158,9 +189,13 @@ export function useArena() {
     models,
     isLoadingModels,
     modelsError,
+    refetchModels,
     getModelById,
     getModelsByProvider,
     getModelsByCapability,
+    getModelsByTier,
+    getAccessibleModels,
+    getLockedModels,
 
     // Arena modes
     arenaModes,
