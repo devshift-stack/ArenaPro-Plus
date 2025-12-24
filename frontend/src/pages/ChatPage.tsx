@@ -97,7 +97,7 @@ interface Message {
 }
 
 export function ChatPage() {
-  const { chatId } = useParams();
+  const { chatId: urlChatId } = useParams();
   const navigate = useNavigate();
   const [input, setInput] = useState('');
   const [selectedMode, setSelectedMode] = useState('AUTO_SELECT');
@@ -105,16 +105,16 @@ export function ChatPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
-  const [currentChatId, setCurrentChatId] = useState<string | undefined>(chatId);
+  const [activeChatId, setActiveChatId] = useState<string | undefined>(urlChatId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { messages, sendMessage, createChat, isLoading, isSending } = useChat({ chatId: currentChatId });
-  const { models } = useArena();
-
-  // Sync chatId from URL
+  // Sync with URL when it changes
   useEffect(() => {
-    setCurrentChatId(chatId);
-  }, [chatId]);
+    setActiveChatId(urlChatId);
+  }, [urlChatId]);
+
+  const { messages, sendMessage, createChat, isLoading, isSending } = useChat({ chatId: activeChatId });
+  const { models } = useArena();
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -136,15 +136,18 @@ export function ChatPage() {
         setProgress(prev => Math.min(prev + Math.random() * 15, 90));
       }, 500);
 
-      let targetChatId = currentChatId;
+      let targetChatId = activeChatId;
 
       // Create new chat if needed
       if (!targetChatId) {
         setProgressMessage('Chat wird erstellt...');
         const newChat = await createChat({ mode: selectedMode });
         // createChat returns the Chat object directly
+        if (!newChat?.id) {
+          throw new Error('Chat konnte nicht erstellt werden');
+        }
         targetChatId = newChat.id;
-        setCurrentChatId(targetChatId);
+        setActiveChatId(targetChatId);
         navigate(`/chat/${targetChatId}`, { replace: true });
       }
 
@@ -178,7 +181,7 @@ export function ChatPage() {
 
   // Handle regenerate message
   const handleRegenerate = async (messageId: string) => {
-    if (isProcessing || !currentChatId) return;
+    if (isProcessing || !activeChatId) return;
 
     // Find the user message before this assistant message to resend
     const messageIndex = messages.findIndex(m => m.id === messageId);
@@ -196,7 +199,7 @@ export function ChatPage() {
         setProgress(prev => Math.min(prev + Math.random() * 15, 90));
       }, 500);
 
-      await sendMessage(previousUserMessage.content, currentChatId);
+      await sendMessage(previousUserMessage.content, activeChatId);
 
       clearInterval(progressInterval);
       setProgress(100);
@@ -227,7 +230,7 @@ export function ChatPage() {
           </div>
           <div>
             <h1 className="text-lg font-semibold text-white">
-              {chatId ? 'Chat fortsetzen' : 'Neuer Chat'}
+              {urlChatId ? 'Chat fortsetzen' : 'Neuer Chat'}
             </h1>
             <p className="text-sm text-slate-400">{currentMode.description}</p>
           </div>
@@ -422,11 +425,8 @@ function MessageBubble({ message, onRegenerate }: {
     try {
       await learningApi.recordFeedback({
         messageId: message.id,
-        feedbackType: type === 'up' ? 'POSITIVE' : 'NEGATIVE',
-        metadata: {
-          modelId: message.modelId,
-          modelName: message.modelName,
-        }
+        isPositive: type === 'up',
+        reason: message.modelName ? `Model: ${message.modelName}` : undefined,
       });
       setFeedback(type);
       toast({
