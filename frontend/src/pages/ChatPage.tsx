@@ -142,7 +142,8 @@ export function ChatPage() {
       if (!targetChatId) {
         setProgressMessage('Chat wird erstellt...');
         const newChat = await createChat({ mode: selectedMode });
-        targetChatId = newChat.chat.id;
+        // createChat returns the Chat object directly
+        targetChatId = newChat.id;
         setCurrentChatId(targetChatId);
         navigate(`/chat/${targetChatId}`, { replace: true });
       }
@@ -504,19 +505,24 @@ function MessageBubble({ message, onRegenerate }: {
             <div className="prose prose-invert prose-sm max-w-none">
               <ReactMarkdown
                 components={{
-                  code({ node, inline, className, children, ...props }) {
+                  code({ className, children, ...props }) {
                     const match = /language-(\w+)/.exec(className || '');
-                    return !inline && match ? (
-                      <SyntaxHighlighter
-                        style={oneDark}
-                        language={match[1]}
-                        PreTag="div"
-                        className="rounded-lg !my-2"
-                        {...props}
-                      >
-                        {String(children).replace(/\n$/, '')}
-                      </SyntaxHighlighter>
-                    ) : (
+                    const isInline = !match && !String(children).includes('\n');
+
+                    if (!isInline && match) {
+                      return (
+                        <SyntaxHighlighter
+                          style={oneDark}
+                          language={match[1]}
+                          PreTag="div"
+                          className="rounded-lg !my-2"
+                        >
+                          {String(children).replace(/\n$/, '')}
+                        </SyntaxHighlighter>
+                      );
+                    }
+
+                    return (
                       <code className="bg-slate-800 px-1.5 py-0.5 rounded text-cyan-400" {...props}>
                         {children}
                       </code>
