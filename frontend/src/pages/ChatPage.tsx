@@ -27,17 +27,19 @@ import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { useToast } from '@/components/ui/use-toast';
 import { useArena } from '@/hooks/useArena';
 import { useChat } from '@/hooks/useChat';
+import { learningApi } from '@/utils/api';
 
 // Arena Mode Configuration
 const ARENA_MODES = [
@@ -173,6 +175,43 @@ export function ChatPage() {
     }
   };
 
+  // Handle regenerate message
+  const handleRegenerate = async (messageId: string) => {
+    if (isProcessing || !currentChatId) return;
+
+    // Find the user message before this assistant message to resend
+    const messageIndex = messages.findIndex(m => m.id === messageId);
+    if (messageIndex <= 0) return;
+
+    const previousUserMessage = messages.slice(0, messageIndex).reverse().find(m => m.role === 'user');
+    if (!previousUserMessage) return;
+
+    setIsProcessing(true);
+    setProgress(0);
+    setProgressMessage('Regeneriere Antwort...');
+
+    try {
+      const progressInterval = setInterval(() => {
+        setProgress(prev => Math.min(prev + Math.random() * 15, 90));
+      }, 500);
+
+      await sendMessage(previousUserMessage.content, currentChatId);
+
+      clearInterval(progressInterval);
+      setProgress(100);
+      setProgressMessage('Fertig!');
+    } catch (error) {
+      console.error('Regenerate failed:', error);
+      setProgressMessage('Fehler beim Regenerieren');
+    } finally {
+      setTimeout(() => {
+        setIsProcessing(false);
+        setProgress(0);
+        setProgressMessage('');
+      }, 500);
+    }
+  };
+
   // Get current mode config
   const currentMode = ARENA_MODES.find(m => m.id === selectedMode)!;
   const ModeIcon = currentMode.icon;
@@ -237,7 +276,7 @@ export function ChatPage() {
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
               >
-                <MessageBubble message={message} />
+                <MessageBubble message={message} onRegenerate={handleRegenerate} />
               </motion.div>
             ))}
           </AnimatePresence>
@@ -357,17 +396,59 @@ export function ChatPage() {
 }
 
 // Message Bubble Component
-function MessageBubble({ message }: { message: {
-  id: string;
-  role: string;
-  content: string;
-  modelId?: string;
-  modelName?: string;
-  metadata?: Record<string, any>;
-  createdAt?: string;
-} }) {
+function MessageBubble({ message, onRegenerate }: {
+  message: {
+    id: string;
+    role: string;
+    content: string;
+    modelId?: string;
+    modelName?: string;
+    metadata?: Record<string, any>;
+    createdAt?: string;
+  };
+  onRegenerate?: (messageId: string) => void;
+}) {
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
+  const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+  const { toast } = useToast();
+
+  const handleFeedback = async (type: 'up' | 'down') => {
+    if (isSubmittingFeedback || feedback === type) return;
+
+    setIsSubmittingFeedback(true);
+    try {
+      await learningApi.recordFeedback({
+        messageId: message.id,
+        feedbackType: type === 'up' ? 'POSITIVE' : 'NEGATIVE',
+        metadata: {
+          modelId: message.modelId,
+          modelName: message.modelName,
+        }
+      });
+      setFeedback(type);
+      toast({
+        title: 'Feedback gespeichert',
+        description: type === 'up' ? 'Danke für das positive Feedback!' : 'Danke für dein Feedback. Wir werden uns verbessern.',
+      });
+    } catch (error) {
+      console.error('Feedback failed:', error);
+      toast({
+        title: 'Fehler',
+        description: 'Feedback konnte nicht gespeichert werden.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  };
+
+  const handleRegenerate = () => {
+    if (onRegenerate) {
+      onRegenerate(message.id);
+    }
+  };
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(message.content);
@@ -471,24 +552,29 @@ function MessageBubble({ message }: { message: {
               <Copy className="w-3 h-3 mr-1" />
               {copied ? 'Kopiert!' : 'Kopieren'}
             </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-7 text-slate-400 hover:text-green-400"
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`h-7 ${feedback === 'up' ? 'text-green-400' : 'text-slate-400 hover:text-green-400'}`}
+              onClick={() => handleFeedback('up')}
+              disabled={isSubmittingFeedback}
             >
               <ThumbsUp className="w-3 h-3" />
             </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-7 text-slate-400 hover:text-red-400"
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`h-7 ${feedback === 'down' ? 'text-red-400' : 'text-slate-400 hover:text-red-400'}`}
+              onClick={() => handleFeedback('down')}
+              disabled={isSubmittingFeedback}
             >
               <ThumbsDown className="w-3 h-3" />
             </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
+            <Button
+              variant="ghost"
+              size="sm"
               className="h-7 text-slate-400 hover:text-white"
+              onClick={handleRegenerate}
             >
               <RotateCcw className="w-3 h-3 mr-1" />
               Regenerieren

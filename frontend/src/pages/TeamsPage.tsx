@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Users,
   Plus,
@@ -9,6 +10,7 @@ import {
   Mail,
   Crown,
   Shield,
+  Loader2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -32,33 +34,25 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
+import { useToast } from '@/components/ui/use-toast';
+import { teamsApi } from '@/utils/api';
 
-// Mock data
-const teams = [
-  {
-    id: '1',
-    name: 'Entwicklung',
-    description: 'Frontend & Backend Team',
-    members: [
-      { id: '1', name: 'Max Müller', email: 'max@example.com', role: 'owner', avatar: null },
-      { id: '2', name: 'Anna Schmidt', email: 'anna@example.com', role: 'admin', avatar: null },
-      { id: '3', name: 'Tom Weber', email: 'tom@example.com', role: 'member', avatar: null },
-    ],
-    chatsCount: 45,
-    createdAt: '2024-01-15',
-  },
-  {
-    id: '2',
-    name: 'Marketing',
-    description: 'Content & Social Media',
-    members: [
-      { id: '4', name: 'Lisa Klein', email: 'lisa@example.com', role: 'owner', avatar: null },
-      { id: '5', name: 'Jan Bauer', email: 'jan@example.com', role: 'member', avatar: null },
-    ],
-    chatsCount: 23,
-    createdAt: '2024-02-20',
-  },
-];
+interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  avatar?: string | null;
+}
+
+interface Team {
+  id: string;
+  name: string;
+  description?: string;
+  members: TeamMember[];
+  chatsCount?: number;
+  createdAt: string;
+}
 
 const roleIcons = {
   owner: Crown,
@@ -75,21 +69,127 @@ const roleBadges = {
 export function TeamsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [newTeamName, setNewTeamName] = useState('');
   const [newTeamDescription, setNewTeamDescription] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Fetch teams
+  const { data: teamsData, isLoading } = useQuery({
+    queryKey: ['teams'],
+    queryFn: async () => {
+      const response = await teamsApi.getTeams();
+      return response.data.teams as Team[];
+    },
+  });
+
+  const teams = teamsData || [];
 
   const filteredTeams = teams.filter(
     (team) =>
       team.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      team.description.toLowerCase().includes(searchQuery.toLowerCase())
+      (team.description || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleCreateTeam = () => {
-    // TODO: API call
-    console.log('Creating team:', { name: newTeamName, description: newTeamDescription });
-    setIsCreateDialogOpen(false);
-    setNewTeamName('');
-    setNewTeamDescription('');
+  // Create team mutation
+  const createTeamMutation = useMutation({
+    mutationFn: async (data: { name: string; description?: string }) => {
+      return teamsApi.createTeam(data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
+      toast({
+        title: 'Team erstellt',
+        description: 'Das Team wurde erfolgreich erstellt.',
+      });
+      setIsCreateDialogOpen(false);
+      setNewTeamName('');
+      setNewTeamDescription('');
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Fehler',
+        description: error.response?.data?.error || 'Team konnte nicht erstellt werden.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Invite member mutation
+  const inviteMemberMutation = useMutation({
+    mutationFn: async ({ teamId, email }: { teamId: string; email: string }) => {
+      return teamsApi.inviteMember(teamId, email);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
+      toast({
+        title: 'Einladung gesendet',
+        description: 'Die Einladung wurde erfolgreich gesendet.',
+      });
+      setIsInviteDialogOpen(false);
+      setInviteEmail('');
+      setSelectedTeamId(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Fehler',
+        description: error.response?.data?.error || 'Einladung konnte nicht gesendet werden.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Leave team mutation
+  const leaveTeamMutation = useMutation({
+    mutationFn: async (teamId: string) => {
+      return teamsApi.leaveTeam(teamId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['teams'] });
+      toast({
+        title: 'Team verlassen',
+        description: 'Du hast das Team verlassen.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Fehler',
+        description: error.response?.data?.error || 'Team konnte nicht verlassen werden.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleCreateTeam = async () => {
+    if (!newTeamName.trim()) return;
+    createTeamMutation.mutate({
+      name: newTeamName.trim(),
+      description: newTeamDescription.trim() || undefined,
+    });
+  };
+
+  const handleInviteMember = async () => {
+    if (!inviteEmail.trim() || !selectedTeamId) return;
+    inviteMemberMutation.mutate({
+      teamId: selectedTeamId,
+      email: inviteEmail.trim(),
+    });
+  };
+
+  const handleLeaveTeam = (teamId: string) => {
+    if (window.confirm('Möchtest du dieses Team wirklich verlassen?')) {
+      leaveTeamMutation.mutate(teamId);
+    }
+  };
+
+  const openInviteDialog = (teamId: string) => {
+    setSelectedTeamId(teamId);
+    setIsInviteDialogOpen(true);
   };
 
   return (
@@ -140,7 +240,13 @@ export function TeamsPage() {
               <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                 Abbrechen
               </Button>
-              <Button onClick={handleCreateTeam} disabled={!newTeamName.trim()}>
+              <Button
+                onClick={handleCreateTeam}
+                disabled={!newTeamName.trim() || createTeamMutation.isPending}
+              >
+                {createTeamMutation.isPending && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
                 Team erstellen
               </Button>
             </DialogFooter>
@@ -159,7 +265,15 @@ export function TeamsPage() {
         />
       </div>
 
+      {/* Loading State */}
+      {isLoading && (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-cyan-500" />
+        </div>
+      )}
+
       {/* Teams Grid */}
+      {!isLoading && (
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {filteredTeams.map((team) => (
           <Card key={team.id}>
@@ -184,12 +298,15 @@ export function TeamsPage() {
                     <Settings className="mr-2 h-4 w-4" />
                     Einstellungen
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => openInviteDialog(team.id)}>
                     <UserPlus className="mr-2 h-4 w-4" />
                     Mitglied einladen
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem className="text-red-400">
+                  <DropdownMenuItem
+                    className="text-red-400"
+                    onClick={() => handleLeaveTeam(team.id)}
+                  >
                     Team verlassen
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -242,7 +359,12 @@ export function TeamsPage() {
               </div>
 
               {/* Invite Button */}
-              <Button variant="outline" className="w-full mt-4" size="sm">
+              <Button
+                variant="outline"
+                className="w-full mt-4"
+                size="sm"
+                onClick={() => openInviteDialog(team.id)}
+              >
                 <Mail className="mr-2 h-4 w-4" />
                 Mitglied einladen
               </Button>
@@ -250,9 +372,55 @@ export function TeamsPage() {
           </Card>
         ))}
       </div>
+      )}
+
+      {/* Invite Member Dialog */}
+      <Dialog open={isInviteDialogOpen} onOpenChange={setIsInviteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mitglied einladen</DialogTitle>
+            <DialogDescription>
+              Gib die E-Mail-Adresse der Person ein, die du einladen möchtest.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">E-Mail-Adresse</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="beispiel@email.com"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsInviteDialogOpen(false);
+                setInviteEmail('');
+                setSelectedTeamId(null);
+              }}
+            >
+              Abbrechen
+            </Button>
+            <Button
+              onClick={handleInviteMember}
+              disabled={!inviteEmail.trim() || inviteMemberMutation.isPending}
+            >
+              {inviteMemberMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Einladung senden
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Empty State */}
-      {filteredTeams.length === 0 && (
+      {!isLoading && filteredTeams.length === 0 && (
         <Card>
           <CardContent className="p-12 text-center">
             <Users className="mx-auto h-12 w-12 text-slate-600" />

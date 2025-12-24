@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   BookOpen,
   Plus,
@@ -12,6 +13,7 @@ import {
   Clock,
   Tag,
   FileText,
+  Loader2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -24,41 +26,30 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/components/ui/use-toast';
+import { knowledgeApi } from '@/utils/api';
 import { formatRelativeTime } from '@/lib/utils';
 
-// Mock data
-const entries = [
-  {
-    id: '1',
-    title: 'React Best Practices 2024',
-    content: 'Eine Sammlung der besten Praktiken für moderne React-Entwicklung...',
-    tags: ['react', 'frontend', 'best-practices'],
-    status: 'verified',
-    source: 'manual',
-    createdAt: '2024-11-15T10:30:00Z',
-    updatedAt: '2024-12-01T14:20:00Z',
-  },
-  {
-    id: '2',
-    title: 'TypeScript Generics Erklärung',
-    content: 'Generics ermöglichen wiederverwendbare Komponenten die mit verschiedenen Typen arbeiten...',
-    tags: ['typescript', 'generics'],
-    status: 'beta',
-    source: 'ai-extracted',
-    createdAt: '2024-11-20T09:15:00Z',
-    updatedAt: '2024-11-20T09:15:00Z',
-  },
-  {
-    id: '3',
-    title: 'API Design Patterns',
-    content: 'RESTful API Design Patterns und Best Practices für skalierbare Backends...',
-    tags: ['api', 'backend', 'design-patterns'],
-    status: 'pending',
-    source: 'imported',
-    createdAt: '2024-12-10T16:45:00Z',
-    updatedAt: '2024-12-10T16:45:00Z',
-  },
-];
+interface KnowledgeEntry {
+  id: string;
+  title: string;
+  content: string;
+  tags: string[];
+  status: string;
+  source?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 const statusConfig = {
   verified: {
@@ -82,9 +73,27 @@ export function KnowledgeBasePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('all');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<KnowledgeEntry | null>(null);
+  const [newEntry, setNewEntry] = useState({ title: '', content: '', tags: '' });
+
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Fetch entries
+  const { data: entriesData, isLoading } = useQuery({
+    queryKey: ['knowledge'],
+    queryFn: async () => {
+      const response = await knowledgeApi.getEntries();
+      return response.data.entries as KnowledgeEntry[];
+    },
+  });
+
+  const entries = entriesData || [];
 
   // Get all unique tags
-  const allTags = Array.from(new Set(entries.flatMap((e) => e.tags)));
+  const allTags = Array.from(new Set(entries.flatMap((e) => e.tags || [])));
 
   // Filter entries
   const filteredEntries = entries.filter((entry) => {
@@ -97,10 +106,123 @@ export function KnowledgeBasePage() {
 
     const matchesTags =
       selectedTags.length === 0 ||
-      selectedTags.some((tag) => entry.tags.includes(tag));
+      selectedTags.some((tag) => (entry.tags || []).includes(tag));
 
     return matchesSearch && matchesTab && matchesTags;
   });
+
+  // Create entry mutation
+  const createEntryMutation = useMutation({
+    mutationFn: async (data: { title: string; content: string; tags: string[] }) => {
+      return knowledgeApi.createEntry(data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['knowledge'] });
+      toast({
+        title: 'Eintrag erstellt',
+        description: 'Der Wissenseintrag wurde erfolgreich erstellt.',
+      });
+      setIsCreateDialogOpen(false);
+      setNewEntry({ title: '', content: '', tags: '' });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Fehler',
+        description: error.response?.data?.error || 'Eintrag konnte nicht erstellt werden.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Update entry mutation
+  const updateEntryMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: { title?: string; content?: string; tags?: string[]; status?: string } }) => {
+      return knowledgeApi.updateEntry(id, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['knowledge'] });
+      toast({
+        title: 'Eintrag aktualisiert',
+        description: 'Der Wissenseintrag wurde erfolgreich aktualisiert.',
+      });
+      setIsEditDialogOpen(false);
+      setEditingEntry(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Fehler',
+        description: error.response?.data?.error || 'Eintrag konnte nicht aktualisiert werden.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Delete entry mutation
+  const deleteEntryMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return knowledgeApi.deleteEntry(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['knowledge'] });
+      toast({
+        title: 'Eintrag gelöscht',
+        description: 'Der Wissenseintrag wurde erfolgreich gelöscht.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Fehler',
+        description: error.response?.data?.error || 'Eintrag konnte nicht gelöscht werden.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleCreateEntry = () => {
+    if (!newEntry.title.trim() || !newEntry.content.trim()) return;
+    const tags = newEntry.tags.split(',').map(t => t.trim()).filter(Boolean);
+    createEntryMutation.mutate({
+      title: newEntry.title.trim(),
+      content: newEntry.content.trim(),
+      tags,
+    });
+  };
+
+  const handleUpdateEntry = () => {
+    if (!editingEntry) return;
+    const tags = typeof editingEntry.tags === 'string'
+      ? (editingEntry.tags as string).split(',').map((t: string) => t.trim()).filter(Boolean)
+      : editingEntry.tags;
+    updateEntryMutation.mutate({
+      id: editingEntry.id,
+      data: {
+        title: editingEntry.title,
+        content: editingEntry.content,
+        tags,
+      },
+    });
+  };
+
+  const handleVerifyEntry = (entry: KnowledgeEntry) => {
+    updateEntryMutation.mutate({
+      id: entry.id,
+      data: { status: 'verified' },
+    });
+  };
+
+  const handleDeleteEntry = (id: string) => {
+    if (window.confirm('Möchtest du diesen Eintrag wirklich löschen?')) {
+      deleteEntryMutation.mutate(id);
+    }
+  };
+
+  const openEditDialog = (entry: KnowledgeEntry) => {
+    setEditingEntry({
+      ...entry,
+      tags: Array.isArray(entry.tags) ? entry.tags : [],
+    });
+    setIsEditDialogOpen(true);
+  };
 
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) =>
@@ -122,10 +244,130 @@ export function KnowledgeBasePage() {
           </p>
         </div>
 
-        <Button leftIcon={<Plus className="h-4 w-4" />}>
+        <Button
+          leftIcon={<Plus className="h-4 w-4" />}
+          onClick={() => setIsCreateDialogOpen(true)}
+        >
           Neuer Eintrag
         </Button>
       </div>
+
+      {/* Create Entry Dialog */}
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent className="sm:max-w-[525px]">
+          <DialogHeader>
+            <DialogTitle>Neuen Eintrag erstellen</DialogTitle>
+            <DialogDescription>
+              Füge einen neuen Wissenseintrag hinzu.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="title">Titel</Label>
+              <Input
+                id="title"
+                placeholder="z.B. React Best Practices"
+                value={newEntry.title}
+                onChange={(e) => setNewEntry({ ...newEntry, title: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="content">Inhalt</Label>
+              <Textarea
+                id="content"
+                placeholder="Beschreibe das Wissen..."
+                value={newEntry.content}
+                onChange={(e) => setNewEntry({ ...newEntry, content: e.target.value })}
+                rows={4}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="tags">Tags (kommagetrennt)</Label>
+              <Input
+                id="tags"
+                placeholder="z.B. react, frontend, best-practices"
+                value={newEntry.tags}
+                onChange={(e) => setNewEntry({ ...newEntry, tags: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+              Abbrechen
+            </Button>
+            <Button
+              onClick={handleCreateEntry}
+              disabled={!newEntry.title.trim() || !newEntry.content.trim() || createEntryMutation.isPending}
+            >
+              {createEntryMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Erstellen
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Entry Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-[525px]">
+          <DialogHeader>
+            <DialogTitle>Eintrag bearbeiten</DialogTitle>
+            <DialogDescription>
+              Bearbeite den Wissenseintrag.
+            </DialogDescription>
+          </DialogHeader>
+          {editingEntry && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-title">Titel</Label>
+                <Input
+                  id="edit-title"
+                  value={editingEntry.title}
+                  onChange={(e) => setEditingEntry({ ...editingEntry, title: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-content">Inhalt</Label>
+                <Textarea
+                  id="edit-content"
+                  value={editingEntry.content}
+                  onChange={(e) => setEditingEntry({ ...editingEntry, content: e.target.value })}
+                  rows={4}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-tags">Tags (kommagetrennt)</Label>
+                <Input
+                  id="edit-tags"
+                  value={Array.isArray(editingEntry.tags) ? editingEntry.tags.join(', ') : editingEntry.tags}
+                  onChange={(e) => setEditingEntry({ ...editingEntry, tags: e.target.value.split(',').map(t => t.trim()) })}
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsEditDialogOpen(false);
+                setEditingEntry(null);
+              }}
+            >
+              Abbrechen
+            </Button>
+            <Button
+              onClick={handleUpdateEntry}
+              disabled={updateEntryMutation.isPending}
+            >
+              {updateEntryMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Speichern
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Search & Filter */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
@@ -204,7 +446,15 @@ export function KnowledgeBasePage() {
         </TabsList>
 
         <TabsContent value={activeTab}>
+          {/* Loading State */}
+          {isLoading && (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-cyan-500" />
+            </div>
+          )}
+
           {/* Entries List */}
+          {!isLoading && (
           <div className="space-y-4">
             {filteredEntries.map((entry) => {
               const status = statusConfig[entry.status as keyof typeof statusConfig];
@@ -254,17 +504,20 @@ export function KnowledgeBasePage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openEditDialog(entry)}>
                             <Edit className="mr-2 h-4 w-4" />
                             Bearbeiten
                           </DropdownMenuItem>
                           {entry.status !== 'verified' && (
-                            <DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleVerifyEntry(entry)}>
                               <CheckCircle className="mr-2 h-4 w-4" />
                               Als verifiziert markieren
                             </DropdownMenuItem>
                           )}
-                          <DropdownMenuItem className="text-red-400">
+                          <DropdownMenuItem
+                            className="text-red-400"
+                            onClick={() => handleDeleteEntry(entry.id)}
+                          >
                             <Trash2 className="mr-2 h-4 w-4" />
                             Löschen
                           </DropdownMenuItem>
@@ -276,9 +529,10 @@ export function KnowledgeBasePage() {
               );
             })}
           </div>
+          )}
 
           {/* Empty State */}
-          {filteredEntries.length === 0 && (
+          {!isLoading && filteredEntries.length === 0 && (
             <Card>
               <CardContent className="p-12 text-center">
                 <BookOpen className="mx-auto h-12 w-12 text-slate-600" />
@@ -291,7 +545,7 @@ export function KnowledgeBasePage() {
                     : 'Füge deinen ersten Wissenseintrag hinzu.'}
                 </p>
                 {!searchQuery && selectedTags.length === 0 && (
-                  <Button className="mt-4">
+                  <Button className="mt-4" onClick={() => setIsCreateDialogOpen(true)}>
                     <Plus className="mr-2 h-4 w-4" />
                     Eintrag erstellen
                   </Button>

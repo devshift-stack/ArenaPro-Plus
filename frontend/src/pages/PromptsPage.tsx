@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import {
   FileText,
   Plus,
@@ -12,6 +14,7 @@ import {
   Code,
   MessageSquare,
   Briefcase,
+  Loader2,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -24,48 +27,36 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useToast } from '@/contexts/ToastContext';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useToast } from '@/components/ui/use-toast';
+import { promptsApi } from '@/utils/api';
 import { copyToClipboard } from '@/lib/utils';
 
-// Mock data
-const prompts = [
-  {
-    id: '1',
-    title: 'Code Review Expert',
-    content: 'Du bist ein erfahrener Software-Entwickler. Analysiere den folgenden Code auf: 1) Bugs und Fehler, 2) Performance-Probleme, 3) Best Practices, 4) Verbesserungsvorschläge. Sei konstruktiv und erkläre deine Vorschläge.',
-    category: 'development',
-    isFavorite: true,
-    usageCount: 45,
-    createdAt: '2024-10-15',
-  },
-  {
-    id: '2',
-    title: 'Creative Writer',
-    content: 'Du bist ein kreativer Autor mit einem Talent für fesselnde Geschichten. Schreibe in einem lebendigen, bildhaften Stil. Achte auf Charakterentwicklung und Spannung.',
-    category: 'creative',
-    isFavorite: true,
-    usageCount: 32,
-    createdAt: '2024-11-01',
-  },
-  {
-    id: '3',
-    title: 'Business Analyst',
-    content: 'Du bist ein erfahrener Business Analyst. Analysiere Geschäftsanforderungen systematisch, identifiziere Risiken und schlage datengetriebene Lösungen vor.',
-    category: 'business',
-    isFavorite: false,
-    usageCount: 18,
-    createdAt: '2024-11-20',
-  },
-  {
-    id: '4',
-    title: 'API Documentation',
-    content: 'Erstelle eine vollständige API-Dokumentation im OpenAPI/Swagger-Format. Dokumentiere alle Endpoints, Parameter, Responses und Beispiele.',
-    category: 'development',
-    isFavorite: false,
-    usageCount: 27,
-    createdAt: '2024-12-01',
-  },
-];
+interface Prompt {
+  id: string;
+  title: string;
+  content: string;
+  category: string;
+  isFavorite: boolean;
+  usageCount: number;
+  createdAt: string;
+}
 
 const categories = [
   { id: 'all', label: 'Alle', icon: FileText },
@@ -79,7 +70,25 @@ export function PromptsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
-  const toast = useToast();
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [editingPrompt, setEditingPrompt] = useState<Prompt | null>(null);
+  const [newPrompt, setNewPrompt] = useState({ title: '', content: '', category: 'development' });
+
+  const { toast } = useToast();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  // Fetch prompts
+  const { data: promptsData, isLoading } = useQuery({
+    queryKey: ['prompts'],
+    queryFn: async () => {
+      const response = await promptsApi.getPrompts();
+      return response.data.prompts as Prompt[];
+    },
+  });
+
+  const prompts = promptsData || [];
 
   const filteredPrompts = prompts.filter((prompt) => {
     const matchesSearch =
@@ -94,14 +103,123 @@ export function PromptsPage() {
     return matchesSearch && matchesCategory && matchesFavorites;
   });
 
-  const handleCopy = async (content: string) => {
-    await copyToClipboard(content);
-    toast.success('Kopiert!', 'Prompt wurde in die Zwischenablage kopiert.');
+  // Create prompt mutation
+  const createPromptMutation = useMutation({
+    mutationFn: async (data: { title: string; content: string; category: string }) => {
+      return promptsApi.createPrompt(data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['prompts'] });
+      toast({
+        title: 'Prompt erstellt',
+        description: 'Der Prompt wurde erfolgreich erstellt.',
+      });
+      setIsCreateDialogOpen(false);
+      setNewPrompt({ title: '', content: '', category: 'development' });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Fehler',
+        description: error.response?.data?.error || 'Prompt konnte nicht erstellt werden.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Update prompt mutation
+  const updatePromptMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Prompt> }) => {
+      return promptsApi.updatePrompt(id, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['prompts'] });
+      toast({
+        title: 'Prompt aktualisiert',
+        description: 'Der Prompt wurde erfolgreich aktualisiert.',
+      });
+      setIsEditDialogOpen(false);
+      setEditingPrompt(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Fehler',
+        description: error.response?.data?.error || 'Prompt konnte nicht aktualisiert werden.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Delete prompt mutation
+  const deletePromptMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return promptsApi.deletePrompt(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['prompts'] });
+      toast({
+        title: 'Prompt gelöscht',
+        description: 'Der Prompt wurde erfolgreich gelöscht.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Fehler',
+        description: error.response?.data?.error || 'Prompt konnte nicht gelöscht werden.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleCreatePrompt = () => {
+    if (!newPrompt.title.trim() || !newPrompt.content.trim()) return;
+    createPromptMutation.mutate({
+      title: newPrompt.title.trim(),
+      content: newPrompt.content.trim(),
+      category: newPrompt.category,
+    });
   };
 
-  const handleUsePrompt = (prompt: typeof prompts[0]) => {
-    // TODO: Navigate to chat with prompt pre-filled
-    toast.info('Prompt verwenden', `"${prompt.title}" wird in neuem Chat verwendet.`);
+  const handleUpdatePrompt = () => {
+    if (!editingPrompt) return;
+    updatePromptMutation.mutate({
+      id: editingPrompt.id,
+      data: {
+        title: editingPrompt.title,
+        content: editingPrompt.content,
+        category: editingPrompt.category,
+      },
+    });
+  };
+
+  const handleToggleFavorite = (prompt: Prompt) => {
+    updatePromptMutation.mutate({
+      id: prompt.id,
+      data: { isFavorite: !prompt.isFavorite },
+    });
+  };
+
+  const handleDeletePrompt = (id: string) => {
+    if (window.confirm('Möchtest du diesen Prompt wirklich löschen?')) {
+      deletePromptMutation.mutate(id);
+    }
+  };
+
+  const openEditDialog = (prompt: Prompt) => {
+    setEditingPrompt({ ...prompt });
+    setIsEditDialogOpen(true);
+  };
+
+  const handleCopy = async (content: string) => {
+    await copyToClipboard(content);
+    toast({
+      title: 'Kopiert!',
+      description: 'Prompt wurde in die Zwischenablage kopiert.',
+    });
+  };
+
+  const handleUsePrompt = (prompt: Prompt) => {
+    // Navigate to chat with prompt pre-filled via query param
+    navigate(`/chat/new?prompt=${encodeURIComponent(prompt.content)}`);
   };
 
   return (
@@ -118,10 +236,149 @@ export function PromptsPage() {
           </p>
         </div>
 
-        <Button leftIcon={<Plus className="h-4 w-4" />}>
+        <Button
+          leftIcon={<Plus className="h-4 w-4" />}
+          onClick={() => setIsCreateDialogOpen(true)}
+        >
           Neuer Prompt
         </Button>
       </div>
+
+      {/* Create Prompt Dialog */}
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent className="sm:max-w-[525px]">
+          <DialogHeader>
+            <DialogTitle>Neuen Prompt erstellen</DialogTitle>
+            <DialogDescription>
+              Erstelle einen neuen Prompt für deine Bibliothek.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="title">Titel</Label>
+              <Input
+                id="title"
+                placeholder="z.B. Code Review Expert"
+                value={newPrompt.title}
+                onChange={(e) => setNewPrompt({ ...newPrompt, title: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="content">Prompt-Inhalt</Label>
+              <Textarea
+                id="content"
+                placeholder="Beschreibe den Prompt..."
+                value={newPrompt.content}
+                onChange={(e) => setNewPrompt({ ...newPrompt, content: e.target.value })}
+                rows={4}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="category">Kategorie</Label>
+              <Select
+                value={newPrompt.category}
+                onValueChange={(value) => setNewPrompt({ ...newPrompt, category: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.filter(c => c.id !== 'all').map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      {cat.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+              Abbrechen
+            </Button>
+            <Button
+              onClick={handleCreatePrompt}
+              disabled={!newPrompt.title.trim() || !newPrompt.content.trim() || createPromptMutation.isPending}
+            >
+              {createPromptMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Erstellen
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Prompt Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="sm:max-w-[525px]">
+          <DialogHeader>
+            <DialogTitle>Prompt bearbeiten</DialogTitle>
+            <DialogDescription>
+              Bearbeite den Prompt.
+            </DialogDescription>
+          </DialogHeader>
+          {editingPrompt && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-title">Titel</Label>
+                <Input
+                  id="edit-title"
+                  value={editingPrompt.title}
+                  onChange={(e) => setEditingPrompt({ ...editingPrompt, title: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-content">Prompt-Inhalt</Label>
+                <Textarea
+                  id="edit-content"
+                  value={editingPrompt.content}
+                  onChange={(e) => setEditingPrompt({ ...editingPrompt, content: e.target.value })}
+                  rows={4}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-category">Kategorie</Label>
+                <Select
+                  value={editingPrompt.category}
+                  onValueChange={(value) => setEditingPrompt({ ...editingPrompt, category: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.filter(c => c.id !== 'all').map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        {cat.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsEditDialogOpen(false);
+                setEditingPrompt(null);
+              }}
+            >
+              Abbrechen
+            </Button>
+            <Button
+              onClick={handleUpdatePrompt}
+              disabled={updatePromptMutation.isPending}
+            >
+              {updatePromptMutation.isPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Speichern
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Search & Filter */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
@@ -154,7 +411,15 @@ export function PromptsPage() {
         </TabsList>
 
         <TabsContent value={activeCategory}>
+          {/* Loading State */}
+          {isLoading && (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-cyan-500" />
+            </div>
+          )}
+
           {/* Prompts Grid */}
+          {!isLoading && (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {filteredPrompts.map((prompt) => (
               <Card key={prompt.id} variant="interactive">
@@ -177,15 +442,18 @@ export function PromptsPage() {
                           <Copy className="mr-2 h-4 w-4" />
                           Kopieren
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openEditDialog(prompt)}>
                           <Edit className="mr-2 h-4 w-4" />
                           Bearbeiten
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleToggleFavorite(prompt)}>
                           <Star className="mr-2 h-4 w-4" />
                           {prompt.isFavorite ? 'Aus Favoriten entfernen' : 'Zu Favoriten'}
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="text-red-400">
+                        <DropdownMenuItem
+                          className="text-red-400"
+                          onClick={() => handleDeletePrompt(prompt.id)}
+                        >
                           <Trash2 className="mr-2 h-4 w-4" />
                           Löschen
                         </DropdownMenuItem>
@@ -217,9 +485,10 @@ export function PromptsPage() {
               </Card>
             ))}
           </div>
+          )}
 
           {/* Empty State */}
-          {filteredPrompts.length === 0 && (
+          {!isLoading && filteredPrompts.length === 0 && (
             <Card>
               <CardContent className="p-12 text-center">
                 <FileText className="mx-auto h-12 w-12 text-slate-600" />
@@ -232,7 +501,7 @@ export function PromptsPage() {
                     : 'Erstelle deinen ersten Prompt.'}
                 </p>
                 {!searchQuery && !showFavoritesOnly && (
-                  <Button className="mt-4">
+                  <Button className="mt-4" onClick={() => setIsCreateDialogOpen(true)}>
                     <Plus className="mr-2 h-4 w-4" />
                     Prompt erstellen
                   </Button>
