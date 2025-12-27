@@ -38,6 +38,7 @@ export const config = {
   // OpenAI (for Embeddings)
   openai: {
     apiKey: process.env.OPENAI_API_KEY || '',
+    baseUrl: process.env.OPENAI_API_BASE_URL || 'https://api.openai.com/v1',
   },
 
   // Encryption
