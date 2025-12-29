@@ -21,7 +21,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   }
 
   try {
-    const response = await fetch('https://api.openai.com/v1/embeddings', {
+    const response = await fetch(`${config.openai.baseUrl}/embeddings`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${config.openai.apiKey}`,
@@ -58,7 +58,7 @@ export async function generateBatchEmbeddings(texts: string[]): Promise<number[]
   }
 
   try {
-    const response = await fetch('https://api.openai.com/v1/embeddings', {
+    const response = await fetch(`${config.openai.baseUrl}/embeddings`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${config.openai.apiKey}`,

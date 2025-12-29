@@ -24,11 +24,11 @@ export default defineConfig({
     host: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:4000',
+        target: process.env.VITE_BACKEND_PROXY_TARGET || 'http://localhost:4000',
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://localhost:4000',
+        target: (process.env.VITE_BACKEND_PROXY_TARGET || 'http://localhost:4000').replace('http', 'ws'),
         ws: true,
       },
     },
